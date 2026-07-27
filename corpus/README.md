@@ -14,22 +14,44 @@ USFM feature class, and every encoding trait must appear in it. Around 200 files
 and 20 MB — small enough that cloning stays pleasant, broad enough that a change
 to note handling cannot pass CI without a file that has notes.
 
+## Requirements
+
+**Python 3.9 or later. Nothing else** — no pip install, no virtualenv. The
+tooling is standard library only, because `verify.py` runs in CI on every push
+and a corpus check that needs its own dependency tree is a corpus check that
+breaks.
+
+[`just`](https://github.com/casey/just) is **optional** — a task runner that
+saves typing. Install it with `winget install Casey.Just` on Windows,
+`brew install just` on macOS, or `cargo install just` anywhere with Rust. If
+you would rather not, every recipe is a single command you can run directly.
+
 ## Building it
 
-```sh
-just corpus-fetch        # download the extended tier from eBible.org
-just corpus-select       # choose ~200 files, write manifest.toml, copy to core/
-just corpus-verify       # hashes, provenance, coverage — this is the CI gate
-```
+| | With `just` | Directly |
+|---|---|---|
+| Download the extended tier | `just corpus-fetch` | `python3 tools/corpus/fetch.py` |
+| Choose ~200 files, write the manifest | `just corpus-select` | `python3 tools/corpus/select.py corpus/extended --target 200 --copy-to corpus/core` |
+| Verify — the CI gate | `just corpus-verify` | `python3 tools/corpus/verify.py` |
+| All three | `just corpus-rebuild` | run the above in order |
 
-Or `just corpus-rebuild` for all three.
+On Windows use `py -3` rather than `python3`. The justfile already does this;
+override with `just py=python corpus-verify` if your setup differs.
 
 Inspect before committing:
 
+| | With `just` | Directly |
+|---|---|---|
+| What the candidate pool covers | `just corpus-coverage corpus/extended` | `python3 tools/corpus/classify.py corpus/extended --coverage` |
+| Per-file scripts, features, traits | `just corpus-classify` | `python3 tools/corpus/classify.py corpus/core` |
+| Redistributable translations available | `just corpus-list` | `python3 tools/corpus/fetch.py --list` |
+| Self-test the tooling (no network) | `just corpus-test` | `python3 tools/corpus/test_tooling.py` |
+
+Start with `--dry-run` if you want to see what would be downloaded before
+anything is:
+
 ```sh
-just corpus-coverage corpus/extended   # what the candidate pool covers
-just corpus-classify corpus/core       # per-file scripts, features, traits
-just corpus-list                       # redistributable translations available
+python3 tools/corpus/fetch.py --dry-run
 ```
 
 ## Licensing
