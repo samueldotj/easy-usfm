@@ -21,10 +21,18 @@ tooling is standard library only, because `verify.py` runs in CI on every push
 and a corpus check that needs its own dependency tree is a corpus check that
 breaks.
 
+If you have nothing installed yet, the bootstrap script handles it:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\bootstrap.ps1 -Minimal   # Windows
+```
+```sh
+scripts/bootstrap.sh --minimal                                            # macOS / Linux
+```
+
 [`just`](https://github.com/casey/just) is **optional** — a task runner that
-saves typing. Install it with `winget install Casey.Just` on Windows,
-`brew install just` on macOS, or `cargo install just` anywhere with Rust. If
-you would rather not, every recipe is a single command you can run directly.
+saves typing. Every recipe is a single command you can run directly, listed
+below.
 
 ## Building it
 

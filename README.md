@@ -24,6 +24,30 @@ Design complete, no implementation yet. Work starts at M0 — the parser layer o
 
 61 work items sized S to XL — see [ROADMAP](docs/ROADMAP.md).
 
+## Getting started
+
+```powershell
+# Windows
+powershell -ExecutionPolicy Bypass -File scripts\bootstrap.ps1
+```
+
+```sh
+# macOS / Linux
+scripts/bootstrap.sh
+```
+
+Installs Python, Rust with the `wasm32-unknown-unknown` target, Node, and
+[`just`](https://github.com/casey/just), skipping anything already present, then
+runs a self-test. Add `-Minimal` / `--minimal` for **Python only**, which is all
+the corpus tooling needs and all that is required today.
+
+**Open a new terminal afterwards** — PATH changes do not reach a shell that was
+already running.
+
+Nothing else needs installing: the corpus tooling is standard-library Python
+with no pip step, and `just` is optional (every recipe is a single command, and
+[corpus/README.md](corpus/README.md) lists the direct equivalents).
+
 ## Stack
 
 ```text
