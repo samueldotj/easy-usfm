@@ -1,0 +1,34 @@
+name: corpus
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tooling:
+    name: corpus tooling self-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Self-test (no network)
+        run: python3 tools/corpus/test_tooling.py
+
+  verify:
+    name: verify committed corpus
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Verify hashes, provenance, and coverage
+        # Skipped until the core tier is populated; see corpus/README.md.
+        run: |
+          if [ -f corpus/manifest.toml ]; then
+            python3 tools/corpus/verify.py
+          else
+            echo "no corpus/manifest.toml yet — skipping"
+          fi

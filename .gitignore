@@ -49,3 +49,12 @@ criterion/
 !.vscode/extensions.json
 .DS_Store
 Thumbs.db
+
+# --- Test corpus ---
+# Core tier is committed; extended tier is fetched (see corpus/README.md).
+corpus/extended/
+corpus/.catalog.csv
+
+# --- Python tooling ---
+__pycache__/
+*.py[cod]
