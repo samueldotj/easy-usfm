@@ -3,7 +3,7 @@
 use std::cell::OnceCell;
 
 use crate::backend::Backend;
-use crate::{Diagnostic, Node};
+use crate::{ByteSpan, Char16Range, Diagnostic, Node, Utf16Mapper};
 
 /// A USFM document: its source text, and what the engine has worked out about
 /// it.
@@ -25,6 +25,7 @@ pub struct Document {
     backend: Backend,
     content: OnceCell<Vec<Node>>,
     diagnostics: OnceCell<Vec<Diagnostic>>,
+    mapper: OnceCell<Utf16Mapper>,
 }
 
 impl Document {
@@ -41,6 +42,7 @@ impl Document {
             backend,
             content: OnceCell::new(),
             diagnostics: OnceCell::new(),
+            mapper: OnceCell::new(),
         }
     }
 
@@ -73,6 +75,27 @@ impl Document {
             diagnostics.sort_by_key(|diagnostic| diagnostic.span.start);
             diagnostics
         })
+    }
+
+    /// The byte-to-Char16 mapper for this document's source.
+    ///
+    /// Built on first use, because a document that is only being parsed never
+    /// needs it — the conversion is a boundary concern, not a parsing one.
+    pub fn mapper(&self) -> &Utf16Mapper {
+        self.mapper.get_or_init(|| Utf16Mapper::new(&self.source))
+    }
+
+    /// Converts a span into the coordinate space everything outside this crate
+    /// speaks.
+    ///
+    /// This is the only way a span reaches the frontend, and going through the
+    /// document rather than through [`Utf16Mapper`] directly removes the one
+    /// way that conversion can be got wrong: the source and the index cannot
+    /// disagree, because the document owns both.
+    ///
+    /// `None` only if the span is malformed in a way `Utf16Mapper` refuses.
+    pub fn to_char16(&self, span: &ByteSpan) -> Option<Char16Range> {
+        self.mapper().to_char16_range(&self.source, span)
     }
 }
 

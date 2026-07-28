@@ -48,6 +48,17 @@ Grapheme columns use `unicode-segmentation`, computed lazily for the cursor line
 
 Tamil `க்ஷ` is three code points rendering as one indivisible unit; Devanagari `क्ष` likewise. The user perceives one character; naive code sees three.
 
+> **The grapheme cluster does not always agree with the reader.** Measured in P0.3, and confirmed identical between Rust's `unicode-segmentation` and V8's `Intl.Segmenter`:
+>
+> | | Renders as | Extended grapheme clusters |
+> |---|---|---|
+> | Devanagari `क्ष` | one unit | **one** |
+> | Tamil `க்ஷ` | one unit | **two** |
+>
+> Unicode 15.1's rule GB9c keeps consonant–virama–consonant together, but only for viramas carrying `Indic_Conjunct_Break=Linker`. Devanagari's U+094D qualifies; Tamil's U+0BCD does not.
+>
+> So on Tamil conjuncts, cluster-wise arrow movement stops *inside* what the reader sees as one character — the exact symptom this section exists to prevent, arriving through the mechanism meant to prevent it. It is not a segmentation bug and not ours to fix upstream. The editor has to decide whether the interaction unit is the cluster or something script-aware on top of it, and that decision belongs with P1.2 rather than here. Both implementations agreeing means at least the two sides of the boundary will be wrong in the same way, which is what makes it safe to defer.
+
 | Operation | Unit |
 |---|---|
 | Arrow keys, selection extension, delete forward | Extended grapheme cluster |

@@ -19,6 +19,15 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
 
+      # UNICODE §9.1 property 4 compares our grapheme segmentation against a
+      # real ICU implementation, because a Rust model of Intl.Segmenter would
+      # only assert that we can copy our own assumptions. The test skips when
+      # node is absent, so without this step it would pass without checking
+      # anything.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
       - name: Format
         run: cargo fmt --all --check
 

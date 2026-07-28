@@ -29,15 +29,19 @@
 //! **Byte offsets do not leave.** [`ByteSpan`] has no `Serialize` impl, so a
 //! byte offset cannot reach JavaScript — where it would index a UTF-16 string
 //! and land in the wrong place, silently, and only for non-ASCII text.
-//! Converting at the boundary is `Utf16Mapper`'s job, which arrives with P0.3.
-//! UNICODE §1.
+//! [`Char16`] does have one, and only [`Utf16Mapper`] can produce it, so
+//! conversion is the single narrow path out. Use [`Document::to_char16`],
+//! which cannot be handed a source that disagrees with its index. UNICODE §1.
 
 mod backend;
+mod char16;
 mod diagnostic;
 mod document;
+pub mod grapheme;
 mod node;
 mod span;
 
+pub use char16::{Char16, Char16Range, Utf16Mapper};
 pub use diagnostic::{Diagnostic, DiagnosticCode, Severity};
 pub use document::Document;
 pub use node::{Attribute, Marker, Node, NodeKind};
