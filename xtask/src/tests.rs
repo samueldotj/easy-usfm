@@ -21,17 +21,45 @@ use crate::features::{
 // ------------------------------------------------------------- fixtures ---
 
 const SAMPLES: &[(&str, &str, &str)] = &[
-    ("latin", "Latin", "In the beginning God created the heavens and the earth."),
-    ("greek", "Greek", "Ἐν ἀρχῇ ἦν ὁ λόγος καὶ ὁ λόγος ἦν πρὸς τὸν θεόν."),
-    ("cyrillic", "Cyrillic", "В начале сотворил Бог небо и землю."),
+    (
+        "latin",
+        "Latin",
+        "In the beginning God created the heavens and the earth.",
+    ),
+    (
+        "greek",
+        "Greek",
+        "Ἐν ἀρχῇ ἦν ὁ λόγος καὶ ὁ λόγος ἦν πρὸς τὸν θεόν.",
+    ),
+    (
+        "cyrillic",
+        "Cyrillic",
+        "В начале сотворил Бог небо и землю.",
+    ),
     ("hebrew", "Hebrew", "בְּרֵאשִׁית בָּרָא אֱלֹהִים אֵת הַשָּׁמַיִם וְאֵת הָאָרֶץ׃"),
     ("arabic", "Arabic", "فِي الْبَدْءِ خَلَقَ اللهُ السَّمَاوَاتِ وَالأَرْضَ."),
-    ("devanagari", "Devanagari", "आदि में परमेश्वर ने आकाश और पृथ्वी की सृष्टि की। क्षत्रिय कि"),
-    ("tamil", "Tamil", "ஆதியிலே தேவன் வானத்தையும் பூமியையும் சிருஷ்டித்தார். க்ஷ"),
-    ("bengali", "Bengali", "আদিতে ঈশ্বর আকাশমণ্ডল ও পৃথিবীর সৃষ্টি করিলেন।"),
+    (
+        "devanagari",
+        "Devanagari",
+        "आदि में परमेश्वर ने आकाश और पृथ्वी की सृष्टि की। क्षत्रिय कि",
+    ),
+    (
+        "tamil",
+        "Tamil",
+        "ஆதியிலே தேவன் வானத்தையும் பூமியையும் சிருஷ்டித்தார். க்ஷ",
+    ),
+    (
+        "bengali",
+        "Bengali",
+        "আদিতে ঈশ্বর আকাশমণ্ডল ও পৃথিবীর সৃষ্টি করিলেন।",
+    ),
     ("thai", "Thai", "ในปฐมกาลพระเจ้าทรงเนรมิตสร้างฟ้าและแผ่นดินโลก"),
     ("khmer", "Khmer", "កាលដើមដំបូង ព្រះបានបង្កើតផ្ទៃមេឃ និងផែនដី"),
-    ("myanmar", "Myanmar", "အစအဦး၌ ဘုရားသခင်သည် ကောင်းကင်နှင့် မြေကြီးကို ဖန်ဆင်းတော်မူ၏"),
+    (
+        "myanmar",
+        "Myanmar",
+        "အစအဦး၌ ဘုရားသခင်သည် ကောင်းကင်နှင့် မြေကြီးကို ဖန်ဆင်းတော်မူ၏",
+    ),
     ("han", "Han", "起初神創造天地。地是空虛混沌。"),
 ];
 
@@ -39,19 +67,40 @@ const FEATURE_SNIPPETS: &[(&str, &str)] = &[
     ("notes", "\\v 2 Text\\f + \\fr 1.2 \\ft A footnote.\\f*\n"),
     ("poetry", "\\q1 A poetic line\n\\q2 indented further\n"),
     ("lists", "\\lh Header\n\\li1 An entry\n\\lf Footer\n"),
-    ("tables", "\\tr \\th1 Head \\th2 Head\n\\tr \\tc1 Cell \\tc2 Cell\n"),
+    (
+        "tables",
+        "\\tr \\th1 Head \\th2 Head\n\\tr \\tc1 Cell \\tc2 Cell\n",
+    ),
     ("milestones", "\\qt-s |who=\"Pilate\"\\*Quoted\\qt-e\\*\n"),
-    ("attributes", "\\v 4 \\w gracious|lemma=\"grace\" strong=\"G5485\"\\w*\n"),
+    (
+        "attributes",
+        "\\v 4 \\w gracious|lemma=\"grace\" strong=\"G5485\"\\w*\n",
+    ),
     ("sidebars", "\\esb\n\\ms Sidebar\n\\p Body\n\\esbe\n"),
-    ("figures", "\\fig Caption|src=\"pic.png\" size=\"span\" ref=\"1.1\"\\fig*\n"),
-    ("introductions", "\\imt1 Intro title\n\\ip Intro paragraph\n\\iot Outline\n"),
+    (
+        "figures",
+        "\\fig Caption|src=\"pic.png\" size=\"span\" ref=\"1.1\"\\fig*\n",
+    ),
+    (
+        "introductions",
+        "\\imt1 Intro title\n\\ip Intro paragraph\n\\iot Outline\n",
+    ),
     ("peripherals", "\\periph Title Page\n\\p Front matter\n"),
-    ("custom_z", "\\zaln-s |x-strong=\"H0430\"\\*aligned\\zaln-e\\*\n"),
-    ("titles", "\\mt1 A Title\n\\s1 A section\n\\d A descriptive title\n"),
+    (
+        "custom_z",
+        "\\zaln-s |x-strong=\"H0430\"\\*aligned\\zaln-e\\*\n",
+    ),
+    (
+        "titles",
+        "\\mt1 A Title\n\\s1 A section\n\\d A descriptive title\n",
+    ),
     ("char_styles", "\\v 5 \\nd Lord\\nd* said \\wj words\\wj*\n"),
     ("alt_numbering", "\\va 3\\va* \\vp \u{967}\\vp*\n"),
     ("verse_ranges", "\\v 6-7 A bridged verse.\n"),
-    ("nested_markers", "\\v 8 \\f + \\ft note with \\+it italic\\+it*\\f*\n"),
+    (
+        "nested_markers",
+        "\\v 8 \\f + \\ft note with \\+it italic\\+it*\\f*\n",
+    ),
 ];
 
 static TMP_SEQ: AtomicUsize = AtomicUsize::new(0);
@@ -85,7 +134,8 @@ fn build_pool(root: &Path) {
         );
 
         for j in 0..6usize {
-            let mut text = format!("\\id GEN\n\\h Test\n\\mt1 {script}\n\\c 1\n\\p\n\\v 1 {line}\n");
+            let mut text =
+                format!("\\id GEN\n\\h Test\n\\mt1 {script}\n\\c 1\n\\p\n\\v 1 {line}\n");
             for k in 0..((i + j) % 5 + 2) {
                 let (_, snippet) = FEATURE_SNIPPETS[(i * 3 + j * 2 + k) % FEATURE_SNIPPETS.len()];
                 text.push_str(snippet);
@@ -128,7 +178,10 @@ fn build_pool(root: &Path) {
 
 fn union_over_pool(root: &Path) -> (BTreeSet<String>, BTreeSet<String>, BTreeSet<String>) {
     let (mut s, mut f, mut t) = (BTreeSet::new(), BTreeSet::new(), BTreeSet::new());
-    for e in walkdir::WalkDir::new(root).into_iter().filter_map(Result::ok) {
+    for e in walkdir::WalkDir::new(root)
+        .into_iter()
+        .filter_map(Result::ok)
+    {
         if !e.file_type().is_file() || e.path().extension().and_then(|x| x.to_str()) != Some("usfm")
         {
             continue;
@@ -159,7 +212,9 @@ fn marker_scanner_reads_tag_level_nesting_and_milestones() {
 
 #[test]
 fn scanner_ignores_a_lone_backslash() {
-    assert!(scan_markers("a \\ b \\* c").iter().all(|m| !m.tag.is_empty()));
+    assert!(scan_markers("a \\ b \\* c")
+        .iter()
+        .all(|m| !m.tag.is_empty()));
 }
 
 #[test]
@@ -232,9 +287,17 @@ fn selected_fixture(target: usize) -> Fixture {
     let corpus = tmp_dir("corpus");
     let core = corpus.join("core");
     let manifest = corpus.join("manifest.toml");
-    corpus::select(&pool, target, Some(&core), Some(&manifest)).expect("select");
+    // Budget high enough not to bind: these fixtures are tiny, and the
+    // selection behaviour under test is coverage, not the size ceiling. No
+    // curated-source floor either — the fixture pool contains none.
+    corpus::select(&pool, target, u64::MAX, 0, Some(&core), Some(&manifest)).expect("select");
 
-    Fixture { _pool: pool, corpus, manifest, core }
+    Fixture {
+        _pool: pool,
+        corpus,
+        manifest,
+        core,
+    }
 }
 
 #[test]
@@ -300,7 +363,10 @@ fn coverage_hole_is_rejected_but_skip_coverage_tolerates_it() {
             std::fs::remove_file(e.path()).unwrap();
         }
     }
-    assert!(corpus::verify(&fx.corpus, false).is_err(), "coverage hole must fail");
+    assert!(
+        corpus::verify(&fx.corpus, false).is_err(),
+        "coverage hole must fail"
+    );
     corpus::verify(&fx.corpus, true).expect("--skip-coverage tolerates the hole");
 }
 

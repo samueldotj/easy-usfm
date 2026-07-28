@@ -25,7 +25,7 @@ pub fn repo_root() -> PathBuf {
         .to_path_buf()
 }
 
-fn usfm_files(root: &Path) -> Vec<PathBuf> {
+pub(crate) fn usfm_files(root: &Path) -> Vec<PathBuf> {
     let mut v: Vec<PathBuf> = WalkDir::new(root)
         .into_iter()
         .filter_map(Result::ok)
@@ -207,7 +207,7 @@ fn require(tool: &str) -> Result<()> {
     }
 }
 
-fn curl_to(url: &str, dest: &Path) -> Result<()> {
+pub(crate) fn curl_to(url: &str, dest: &Path) -> Result<()> {
     let out = Command::new("curl")
         .args([
             "--location",
@@ -253,9 +253,49 @@ pub struct FetchOpts {
     pub ids: Option<String>,
     pub limit: usize,
     pub refresh_catalog: bool,
+    /// Skip the eBible catalogue and take only the curated repositories.
+    pub skip_ebible: bool,
+    /// Skip the curated repositories and take only eBible.
+    pub skip_github: bool,
+    /// Restrict to named curated sources, comma separated.
+    pub github_ids: Option<String>,
 }
 
 pub fn fetch(o: &FetchOpts) -> Result<()> {
+    // Both tiers land in the same pool directory and produce the same
+    // provenance shape, so `select` and `verify` never learn where a file came
+    // from. The two are separate only because their licence evidence is
+    // gathered differently.
+    let mut provenance = serde_json::Map::new();
+    let dest = repo_root().join("corpus").join("extended");
+
+    if !o.skip_github {
+        if !o.list {
+            require("curl")?;
+            require("tar")?;
+        }
+        std::fs::create_dir_all(&dest)?;
+        eprintln!("curated repositories: {}", crate::github::SOURCES.len());
+        if o.list {
+            for source in crate::github::SOURCES {
+                println!(
+                    "{:<24} {:<12} {:<4} {}",
+                    source.id, source.script, source.direction, source.language
+                );
+            }
+        } else {
+            provenance.extend(crate::github::fetch_all(
+                &dest,
+                o.dry_run,
+                o.github_ids.as_deref(),
+            )?);
+        }
+    }
+
+    if o.skip_ebible {
+        return finish_fetch(&dest, provenance, o.dry_run);
+    }
+
     let rows = load_catalog(o.refresh_catalog)?;
     let usable: Vec<&CatalogRow> = rows.iter().filter(|r| r.usable()).collect();
     eprintln!(
@@ -271,7 +311,7 @@ pub fn fetch(o: &FetchOpts) -> Result<()> {
                 r.translation_id, r.script, r.direction, r.language
             );
         }
-        return Ok(());
+        return finish_fetch(&dest, provenance, o.dry_run);
     }
 
     let selected: Vec<&CatalogRow> = match &o.ids {
@@ -315,16 +355,14 @@ pub fn fetch(o: &FetchOpts) -> Result<()> {
                 ZIP_URL.replace("{id}", &r.translation_id)
             );
         }
-        return Ok(());
+        return finish_fetch(&dest, provenance, o.dry_run);
     }
 
     require("curl")?;
     require("tar")?;
-    let dest = repo_root().join("corpus").join("extended");
     std::fs::create_dir_all(&dest)?;
     let tmp = dest.join(".download.zip");
 
-    let mut provenance = serde_json::Map::new();
     let mut total = 0usize;
 
     for (i, r) in selected.iter().enumerate() {
@@ -374,14 +412,36 @@ pub fn fetch(o: &FetchOpts) -> Result<()> {
         );
     }
     std::fs::remove_file(&tmp).ok();
+    eprintln!("{total} files from eBible");
 
-    std::fs::write(
-        dest.join("provenance.json"),
-        serde_json::to_string_pretty(&provenance)? + "\n",
-    )?;
+    finish_fetch(&dest, provenance, o.dry_run)
+}
+
+/// Writes the combined provenance for whatever was fetched.
+///
+/// One file covering both kinds of source, because `select` reads it by
+/// directory name and has no interest in which catalogue an entry came from.
+fn finish_fetch(
+    dest: &Path,
+    provenance: serde_json::Map<String, serde_json::Value>,
+    dry_run: bool,
+) -> Result<()> {
+    if dry_run || provenance.is_empty() {
+        return Ok(());
+    }
+
+    // Merge rather than overwrite, so fetching one source does not discard the
+    // record of another fetched earlier -- otherwise `--skip-ebible` would
+    // quietly orphan every eBible file already in the pool, and `select` would
+    // emit manifest rows with no source or copyright.
+    let path = dest.join("provenance.json");
+    let mut merged = load_provenance(dest);
+    merged.extend(provenance);
+
+    std::fs::write(&path, serde_json::to_string_pretty(&merged)? + "\n")?;
     eprintln!(
-        "\n{total} files from {} translations in {}",
-        provenance.len(),
+        "\nprovenance for {} sources in {}",
+        merged.len(),
         dest.display()
     );
     Ok(())
@@ -408,11 +468,26 @@ struct Candidate {
     sha256: String,
     profile: Profile,
     goals: BTreeSet<String>,
+    /// The pool directory the file came from, which is the provenance key.
+    translation: String,
+}
+
+/// Pool layout is `<source>/<id>/<file>`, so the parent directory names the
+/// source. `select` reads provenance by this key.
+fn translation_of(path: &Path, source: &Path) -> String {
+    path.strip_prefix(source)
+        .ok()
+        .and_then(|relative| relative.parent())
+        .and_then(|parent| parent.file_name())
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_default()
 }
 
 pub fn select(
     source: &Path,
     target: usize,
+    budget_bytes: u64,
+    per_source: usize,
     copy_to: Option<&Path>,
     manifest_path: Option<&Path>,
 ) -> Result<()> {
@@ -434,6 +509,7 @@ pub fn select(
             sha256: sha256_hex(&raw),
             goals: profile.goals(),
             profile,
+            translation: translation_of(&f, source),
             path: f,
         });
     }
@@ -468,18 +544,75 @@ pub fn select(
     }
     eprintln!("greedy cover: {} files", chosen.len());
 
-    // Pad toward the target, spreading across scripts and preferring small files.
+    // Pad toward the target, spreading across scripts and aiming at the size
+    // the budget implies.
+    //
+    // Both obvious heuristics are wrong, in opposite directions. Always
+    // taking the smallest candidate fills the tier with front matter and
+    // two-page epistles — 200 files containing almost no chapters and nothing
+    // long enough to exercise chunking. Always taking the largest spends the
+    // whole budget on fifty whole-Bible files and loses the breadth the file
+    // count was for.
+    //
+    // ARCHITECTURE §12.4 asks for roughly 200 files in roughly 20 MB, which
+    // is a statement about *average* size. So each slot aims at its fair
+    // share of the remaining budget, recomputed as it goes: taking something
+    // small leaves more room for the next pick, taking something large leaves
+    // less. The result fills the budget and hits the file count.
     let mut per_script: BTreeMap<String, usize> = BTreeMap::new();
     for &i in &chosen {
         for s in &cands[i].profile.scripts {
             *per_script.entry(s.clone()).or_default() += 1;
         }
     }
+    let mut used: u64 = chosen.iter().map(|&i| cands[i].bytes).sum();
+
+    // Curated sources get a guaranteed floor before general padding.
+    //
+    // They are listed by hand, with their licence basis checked by a person,
+    // which makes leaving one out a silently discarded decision rather than a
+    // sampling outcome. And that is exactly what happens without this: the
+    // padding spreads by script rarity, so a hand-picked Latin source loses
+    // every tie to the dozens of Latin translations eBible supplies, and can
+    // finish with no files at all.
+    for source_id in crate::github::SOURCES.iter().map(|source| source.id) {
+        let mut from_this = chosen
+            .iter()
+            .filter(|&&i| cands[i].translation == source_id)
+            .count();
+
+        while from_this < per_source && chosen.len() < target {
+            let slots_left = (target - chosen.len()) as u64;
+            let fair_share = budget_bytes.saturating_sub(used) / slots_left.max(1);
+
+            let next = cands
+                .iter()
+                .enumerate()
+                .filter(|(i, c)| !taken[*i] && c.translation == source_id)
+                .filter(|(_, c)| used + c.bytes <= budget_bytes)
+                .min_by_key(|(_, c)| c.bytes.abs_diff(fair_share))
+                .map(|(i, _)| i);
+
+            let Some(i) = next else { break };
+            taken[i] = true;
+            used += cands[i].bytes;
+            for s in &cands[i].profile.scripts {
+                *per_script.entry(s.clone()).or_default() += 1;
+            }
+            chosen.push(i);
+            from_this += 1;
+        }
+    }
+
     while chosen.len() < target {
+        let slots_left = (target - chosen.len()) as u64;
+        let fair_share = budget_bytes.saturating_sub(used) / slots_left.max(1);
+
         let next = cands
             .iter()
             .enumerate()
             .filter(|(i, _)| !taken[*i])
+            .filter(|(_, c)| used + c.bytes <= budget_bytes)
             .min_by_key(|(_, c)| {
                 let rarity = c
                     .profile
@@ -488,11 +621,13 @@ pub fn select(
                     .map(|s| per_script.get(s).copied().unwrap_or(0))
                     .min()
                     .unwrap_or(0);
-                (rarity, c.bytes)
+                // Rarest script first, then closest to this slot's fair share.
+                (rarity, c.bytes.abs_diff(fair_share))
             })
             .map(|(i, _)| i);
         let Some(i) = next else { break };
         taken[i] = true;
+        used += cands[i].bytes;
         for s in &cands[i].profile.scripts {
             *per_script.entry(s.clone()).or_default() += 1;
         }
@@ -500,10 +635,17 @@ pub fn select(
     }
     let total: u64 = chosen.iter().map(|&i| cands[i].bytes).sum();
     eprintln!(
-        "after padding: {} files, {} MB",
+        "after padding: {} files, {:.1} MB of a {:.0} MB budget",
         chosen.len(),
-        total / 1024 / 1024
+        total as f64 / 1024.0 / 1024.0,
+        budget_bytes as f64 / 1024.0 / 1024.0
     );
+    if chosen.len() < target {
+        eprintln!(
+            "note: stopped {} short of the target — the budget ran out first",
+            target - chosen.len()
+        );
+    }
 
     let prov = load_provenance(source);
     let mut entries: Vec<RenderEntry> = chosen
@@ -511,14 +653,7 @@ pub fn select(
         .map(|&i| {
             let c = &cands[i];
             let name = c.path.file_name().unwrap().to_string_lossy().to_string();
-            let tid = c
-                .path
-                .strip_prefix(source)
-                .ok()
-                .and_then(|r| r.parent())
-                .and_then(|p| p.file_name())
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_default();
+            let tid = c.translation.clone();
             let m = prov.get(&tid);
             let get = |k: &str| -> String {
                 m.and_then(|v| v.get(k))

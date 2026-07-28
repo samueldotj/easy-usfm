@@ -36,10 +36,10 @@ powershell -ExecutionPolicy Bypass -File scripts\bootstrap.ps1
 scripts/bootstrap.sh
 ```
 
-Installs Python, Rust with the `wasm32-unknown-unknown` target, Node, and
+Installs Rust with the `wasm32-unknown-unknown` target, Node, and
 [`just`](https://github.com/casey/just), skipping anything already present, then
-runs a self-test. Add `-Minimal` / `--minimal` for **Python only**, which is all
-the corpus tooling needs.
+runs a self-test. Add `-Minimal` / `--minimal` for **Rust only**, which builds
+the engine and runs the corpus tooling — everything that exists today.
 
 On Windows it also installs the Visual C++ build tools, because rustup defaults
 to the MSVC target and without a linker nothing compiles at all — not even a
@@ -47,12 +47,14 @@ wasm-only build, since proc-macro crates are built for the host. It is a large
 download; `-SkipBuildTools` uses the `gnu` target instead, which brings its own
 linker, at the cost of diverging from what Tauri targets on Windows.
 
+There is no Python step: the corpus tooling is `cargo xtask`, so contributors
+install one toolchain rather than two.
+
 **Open a new terminal afterwards** — PATH changes do not reach a shell that was
 already running.
 
-Nothing else needs installing: the corpus tooling is standard-library Python
-with no pip step, and `just` is optional (every recipe is a single command, and
-[corpus/README.md](corpus/README.md) lists the direct equivalents).
+`just` is optional — every recipe is a single command, and
+[corpus/README.md](corpus/README.md) lists the direct equivalents.
 
 ## Stack
 
@@ -74,6 +76,8 @@ crates/
 ├── easy-usfm-wasm/   wasm-bindgen surface, worker protocol
 └── easy-usfm-tauri/  file access, atomic save, recovery, watching
 src/                  Svelte frontend
+xtask/                development tasks — corpus fetch, select, verify
+corpus/               test corpus: 200 committed files, pinned by hash
 docs/                 design documentation
 ```
 

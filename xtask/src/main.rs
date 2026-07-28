@@ -15,7 +15,11 @@ use clap::{Parser, Subcommand};
 
 mod corpus;
 mod features;
+mod github;
 mod manifest;
+
+#[cfg(test)]
+mod tests;
 
 #[derive(Parser)]
 #[command(name = "xtask", about = "Development tasks for easy-usfm", version)]
@@ -33,7 +37,7 @@ enum Task {
 
 #[derive(Subcommand)]
 enum CorpusCmd {
-    /// Download the extended tier from eBible.org (redistributable only)
+    /// Download the extended tier: eBible.org plus the curated repositories
     Fetch {
         /// List usable translations and exit
         #[arg(long)]
@@ -50,12 +54,28 @@ enum CorpusCmd {
         /// Re-download the catalog
         #[arg(long)]
         refresh_catalog: bool,
+        /// Take only the curated repositories
+        #[arg(long)]
+        skip_ebible: bool,
+        /// Take only eBible
+        #[arg(long)]
+        skip_github: bool,
+        /// Comma-separated curated source ids
+        #[arg(long)]
+        github_ids: Option<String>,
     },
     /// Choose the committed core tier from the fetched extended tier
     Select {
         /// How many files to end up with
         #[arg(long, default_value_t = 200)]
         target: usize,
+        /// Size ceiling for the committed tier, in MB. This tier lands in
+        /// every clone, so it is a budget rather than a suggestion.
+        #[arg(long, default_value_t = 20)]
+        max_mb: u64,
+        /// Files guaranteed to each curated repository source
+        #[arg(long, default_value_t = 10)]
+        per_source: usize,
         /// Where the fetched files are
         #[arg(long)]
         source: Option<PathBuf>,
@@ -95,22 +115,37 @@ fn main() -> Result<()> {
                 ids,
                 limit,
                 refresh_catalog,
+                skip_ebible,
+                skip_github,
+                github_ids,
             } => corpus::fetch(&corpus::FetchOpts {
                 list,
                 dry_run,
                 ids,
                 limit,
                 refresh_catalog,
+                skip_ebible,
+                skip_github,
+                github_ids,
             }),
             CorpusCmd::Select {
                 target,
+                max_mb,
+                per_source,
                 source,
                 copy_to,
                 manifest,
             } => {
                 let source = source.unwrap_or_else(|| root.join("corpus").join("extended"));
                 let copy_to = copy_to.or_else(|| Some(root.join("corpus").join("core")));
-                corpus::select(&source, target, copy_to.as_deref(), manifest.as_deref())
+                corpus::select(
+                    &source,
+                    target,
+                    max_mb * 1024 * 1024,
+                    per_source,
+                    copy_to.as_deref(),
+                    manifest.as_deref(),
+                )
             }
             CorpusCmd::Verify {
                 corpus: dir,

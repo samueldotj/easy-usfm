@@ -6,8 +6,9 @@
     Idempotent: anything already present is left alone. Uses winget, which ships
     with Windows 10 1809+ and Windows 11.
 
-    Default installs everything the project needs. Use -Minimal for just the
-    corpus tooling (Python only), which is all that is required today.
+    Default installs everything the project needs. Use -Minimal for Rust
+    alone, which builds the engine and runs the corpus tooling — everything
+    that exists today.
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File scripts\bootstrap.ps1
@@ -18,7 +19,7 @@
 #Requires -Version 5.1
 [CmdletBinding()]
 param(
-    [switch]$Minimal,          # Python only — enough for the corpus tooling
+    [switch]$Minimal,          # Rust only — engine and corpus tooling
     [switch]$SkipRust,
     [switch]$SkipNode,
     [switch]$SkipJust,
@@ -60,16 +61,6 @@ function Invoke-Native {
     finally { $ErrorActionPreference = $prev }
 }
 
-# The Microsoft Store puts alias stubs on PATH at WindowsApps\python3.exe. They
-# are real executables that Get-Command finds, but they only print an
-# advertisement and exit non-zero. The interpreter has to be run to know
-# whether it is actually installed.
-function Test-Python ($cmd) {
-    if (-not (Test-Tool $cmd)) { return $false }
-    $null = Invoke-Native $cmd @('--version')
-    return ($LASTEXITCODE -eq 0)
-}
-
 function Install-Pkg ($id, $label, $probe) {
     if (Test-Tool $probe) { Write-Skip "$label"; return $true }
 
@@ -102,38 +93,22 @@ if (-not (Test-Tool 'winget')) {
 
        https://apps.microsoft.com/detail/9nblggh4nns1
 
-   Then run this script again. To install Python by hand instead:
+   Then run this script again. To install Rust by hand instead:
 
-       https://www.python.org/downloads/windows/
-       (tick 'Add python.exe to PATH' in the installer)
+       https://rustup.rs
+       (and the Visual C++ build tools, which rustup will point you at)
 "@
     exit 1
 }
 Write-Ok "winget present"
 
-# ---- Python — required -----------------------------------------------------
-
-Write-Step "Python 3 (required by the corpus tooling)"
-$havePython = (Test-Python 'py') -or (Test-Python 'python3') -or (Test-Python 'python')
-if ($havePython) {
-    Write-Skip "python already installed"
-} else {
-    Install-Pkg 'Python.Python.3.12' 'Python 3.12' 'py' | Out-Null
-}
-
-# ---- Optional toolchain ----------------------------------------------------
-
-if (-not $Minimal) {
-
-    if (-not $SkipJust) {
-        Write-Step "just (task runner — optional)"
-        if (-not (Install-Pkg 'Casey.Just' 'just' 'just')) {
-            Write-Warn "falling back to cargo later if Rust is installed"
-        }
-    }
+# ---- Rust — required -------------------------------------------------------
+#
+# The corpus tooling is `cargo xtask`, so Rust is the only interpreter the
+# project needs. Nothing here requires Python.
 
     if (-not $SkipRust) {
-        Write-Step "Rust toolchain"
+        Write-Step "Rust toolchain (engine and corpus tooling)"
 
         # rustup defaults to the msvc target, which links with link.exe from
         # the Visual C++ build tools. Without them nothing compiles at all --
@@ -169,9 +144,19 @@ if (-not $Minimal) {
                     Write-Verbose
                 Write-Ok "wasm32-unknown-unknown"
             }
-            # just is a Rust program; cargo is a reliable fallback if winget
-            # did not have it.
-            if (-not $SkipJust -and -not (Test-Tool 'just') -and (Test-Tool 'cargo')) {
+        }
+    }
+
+# ---- Optional toolchain ----------------------------------------------------
+
+if (-not $Minimal) {
+
+    if (-not $SkipJust) {
+        Write-Step "just (task runner — optional)"
+        if (-not (Install-Pkg 'Casey.Just' 'just' 'just')) {
+            # just is a Rust program, so cargo is a reliable fallback when
+            # winget does not have it.
+            if (Test-Tool 'cargo') {
                 Write-Host "   installing just via cargo…"
                 Invoke-Native cargo @('install', 'just') | Write-Verbose
                 Update-SessionPath
@@ -191,36 +176,34 @@ if (-not $Minimal) {
 Update-SessionPath
 Write-Step "Verifying"
 
-$python = $null
-foreach ($c in @('py -3', 'python3', 'python')) {
-    $parts = $c.Split(' ')
-    $exe   = $parts[0]
-    if (Test-Tool $exe) {
-        $v = Invoke-Native $exe (@($parts | Select-Object -Skip 1) + '--version')
-        if ($LASTEXITCODE -eq 0) { $python = $c; Write-Ok "python  $c  ($($v.Trim()))"; break }
-    }
-}
-if (-not $python) { Write-Err "no working python found" }
-
-foreach ($t in @('just', 'cargo', 'node', 'git')) {
+foreach ($t in @('cargo', 'git', 'just', 'node')) {
     if (Test-Tool $t) {
         $v = (Invoke-Native $t @('--version')).Trim() -split "`r?`n" | Select-Object -First 1
         Write-Ok ("$t".PadRight(7) + " $v")
-    } elseif ($Minimal -and $t -ne 'git') {
+    } elseif ($Minimal -and $t -in @('just', 'node')) {
         Write-Skip "$t (skipped: -Minimal)"
     } else {
         Write-Warn "$t not found"
     }
 }
 
+if (Test-Tool 'rustup') {
+    $targets = Invoke-Native rustup @('target', 'list', '--installed')
+    if ($targets -match 'wasm32-unknown-unknown') {
+        Write-Ok "target  wasm32-unknown-unknown"
+    } else {
+        Write-Warn "wasm32-unknown-unknown not installed — the engine will not build for the web"
+    }
+}
+
 # ---- Smoke test ------------------------------------------------------------
 
-if ($python) {
+if (Test-Tool 'cargo') {
     Write-Step "Smoke test — corpus tooling self-test"
     $repo = Split-Path $PSScriptRoot -Parent
     Push-Location $repo
     try {
-        & cmd /c "$python tools\corpus\test_tooling.py"
+        Invoke-Native cargo @('test', '--package', 'xtask') | Write-Verbose
         if ($LASTEXITCODE -eq 0) { Write-Ok "corpus tooling works" }
         else { Write-Err "self-test failed (exit $LASTEXITCODE)" }
     } finally { Pop-Location }
@@ -234,15 +217,22 @@ Write-Host @"
    If anything above says 'not found', open a NEW terminal first — PATH
    changes do not reach a shell that was already running.
 
-   Build the test corpus:
+   Check the engine builds:
 
-       $python tools\corpus\fetch.py --dry-run     # see what would download
-       $python tools\corpus\fetch.py               # download (~10 min)
-       $python tools\corpus\select.py corpus\extended --target 200 --copy-to corpus\core
-       $python tools\corpus\verify.py
+       cargo test --workspace
+       cargo build -p easy-usfm-core --target wasm32-unknown-unknown
+
+   The committed corpus is already in the repository. To re-verify it, or to
+   rebuild the fetched tier:
+
+       cargo xtask corpus verify
+       cargo xtask corpus fetch --dry-run     # see what would download
+       cargo xtask corpus fetch               # download (~10 min)
+       cargo xtask corpus select --target 200
 
    Or, with just installed:
 
+       just check
        just corpus-rebuild
 
    See corpus\README.md for what the tiers are and why.

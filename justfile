@@ -11,42 +11,63 @@
 # a POSIX shell on Windows.
 set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
 
-# Windows generally has no `python3`; the py launcher is the reliable entry
-# point there. Override if your setup differs:  just py=python corpus-verify
-py := if os_family() == "windows" { "py -3" } else { "python3" }
-
 default:
     @just --list
 
 # ---------------------------------------------------------------- corpus ---
+#
+# The corpus tooling is `cargo xtask`, so it needs no interpreter beyond the
+# Rust toolchain the project already requires. The .cargo alias makes it work
+# from a bare checkout with nothing else installed.
 
-# Download the extended tier from eBible.org (redistributable translations only)
+# Download the extended tier: eBible.org plus the curated repositories
 corpus-fetch *ARGS:
-    {{py}} tools/corpus/fetch.py {{ARGS}}
+    cargo xtask corpus fetch {{ARGS}}
 
-# List redistributable translations without downloading anything
+# List redistributable sources without downloading anything
 corpus-list:
-    {{py}} tools/corpus/fetch.py --list
+    cargo xtask corpus fetch --list
 
 # Choose the committed core tier from the fetched extended tier
 corpus-select target="200":
-    {{py}} tools/corpus/select.py corpus/extended --target {{target}} --copy-to corpus/core
+    cargo xtask corpus select --target {{target}}
 
 # Verify the committed corpus: hashes, provenance, coverage. Runs in CI.
 corpus-verify:
-    {{py}} tools/corpus/verify.py
+    cargo xtask corpus verify
 
 # Report scripts, features, and encoding traits per file
 corpus-classify path="corpus/core":
-    {{py}} tools/corpus/classify.py {{path}}
+    cargo xtask corpus classify {{path}}
 
 # Summarise coverage and list anything missing
 corpus-coverage path="corpus/core":
-    {{py}} tools/corpus/classify.py {{path}} --coverage
+    cargo xtask corpus classify {{path}} --coverage
 
 # Self-test the corpus tooling (no network)
 corpus-test:
-    {{py}} tools/corpus/test_tooling.py
+    cargo test --package xtask
 
 # Rebuild the corpus from scratch: fetch, select, verify
 corpus-rebuild: corpus-fetch corpus-select corpus-verify
+
+# ---------------------------------------------------------------- engine ---
+
+# Everything CI runs, in the order it runs it
+check: fmt-check lint test wasm
+
+fmt:
+    cargo fmt --all
+
+fmt-check:
+    cargo fmt --all --check
+
+lint:
+    cargo clippy --workspace --all-targets -- -D warnings
+
+test:
+    cargo test --workspace
+
+# The engine has to compile for the target it actually ships on
+wasm:
+    cargo build --package easy-usfm-core --target wasm32-unknown-unknown

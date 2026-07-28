@@ -16,10 +16,9 @@ to note handling cannot pass CI without a file that has notes.
 
 ## Requirements
 
-**Python 3.9 or later. Nothing else** — no pip install, no virtualenv. The
-tooling is standard library only, because `verify.py` runs in CI on every push
-and a corpus check that needs its own dependency tree is a corpus check that
-breaks.
+**The Rust toolchain. Nothing else** — the tooling is `cargo xtask`, so it runs
+in the same toolchain the engine needs and a contributor installs one thing
+rather than two. The `.cargo` alias makes it work from a bare checkout.
 
 If you have nothing installed yet, the bootstrap script handles it:
 
@@ -38,29 +37,57 @@ below.
 
 | | With `just` | Directly |
 |---|---|---|
-| Download the extended tier | `just corpus-fetch` | `python3 tools/corpus/fetch.py` |
-| Choose ~200 files, write the manifest | `just corpus-select` | `python3 tools/corpus/select.py corpus/extended --target 200 --copy-to corpus/core` |
-| Verify — the CI gate | `just corpus-verify` | `python3 tools/corpus/verify.py` |
+| Download the extended tier | `just corpus-fetch` | `cargo xtask corpus fetch` |
+| Choose ~200 files, write the manifest | `just corpus-select` | `cargo xtask corpus select --target 200` |
+| Verify — the CI gate | `just corpus-verify` | `cargo xtask corpus verify` |
 | All three | `just corpus-rebuild` | run the above in order |
-
-On Windows use `py -3` rather than `python3`. The justfile already does this;
-override with `just py=python corpus-verify` if your setup differs.
 
 Inspect before committing:
 
 | | With `just` | Directly |
 |---|---|---|
-| What the candidate pool covers | `just corpus-coverage corpus/extended` | `python3 tools/corpus/classify.py corpus/extended --coverage` |
-| Per-file scripts, features, traits | `just corpus-classify` | `python3 tools/corpus/classify.py corpus/core` |
-| Redistributable translations available | `just corpus-list` | `python3 tools/corpus/fetch.py --list` |
-| Self-test the tooling (no network) | `just corpus-test` | `python3 tools/corpus/test_tooling.py` |
+| What the candidate pool covers | `just corpus-coverage corpus/extended` | `cargo xtask corpus classify corpus/extended --coverage` |
+| Per-file scripts, features, traits | `just corpus-classify` | `cargo xtask corpus classify corpus/core` |
+| Redistributable sources available | `just corpus-list` | `cargo xtask corpus fetch --list` |
+| Self-test the tooling (no network) | `just corpus-test` | `cargo test --package xtask` |
 
 Start with `--dry-run` if you want to see what would be downloaded before
 anything is:
 
 ```sh
-python3 tools/corpus/fetch.py --dry-run
+cargo xtask corpus fetch --dry-run
 ```
+
+## Where the files come from
+
+Two kinds of source, which `select` and `verify` treat identically — they
+differ only in how the licence evidence is gathered.
+
+**eBible.org**, for breadth. Hundreds of translations behind one catalogue with
+a machine-readable `Redistributable` flag, which is what makes the licence
+question evidence rather than interpretation.
+
+**Curated repositories**, listed by hand in `xtask/src/github.rs` with their
+licence basis recorded alongside, and pinned to a commit rather than a branch
+so the pool cannot drift underneath a failing test:
+
+| Source | Text | Terms |
+|---|---|---|
+| [FreeBiblesIndia/Tamil_Bible](https://github.com/FreeBiblesIndia/Tamil_Bible) | Tamil | CC BY-SA 4.0 |
+| [FreeBiblesIndia/Hindi_Bible](https://github.com/FreeBiblesIndia/Hindi_Bible) | Hindi (Devanagari) | CC BY-SA 4.0 |
+| [dharmatech/bsb-usfm](https://github.com/dharmatech/bsb-usfm) | Berean Standard Bible | Public domain |
+
+The two Creative Commons texts require **attribution** — *"Original work
+available at http://www.freebiblesindia.in"* — and carry a **ShareAlike**
+condition. They are test data rather than part of any released artefact, and
+the manifest records the licence line for every file, but the repository is MIT
+and now carries CC BY-SA content, which is worth knowing before any of it is
+copied elsewhere.
+
+Curated sources are guaranteed a share of the committed tier
+(`--per-source`, default 10). Without that floor the selector, which spreads by
+script rarity, drops a hand-picked Latin source entirely in favour of the dozens
+eBible supplies — silently discarding a deliberate decision.
 
 ## Licensing
 
@@ -82,7 +109,7 @@ Two limits worth stating plainly:
 
 ## Coverage requirements
 
-Enforced by `verify.py`; defined in `tools/corpus/usfm_features.py`.
+Enforced by `cargo xtask corpus verify`; defined in `xtask/src/features.rs`.
 
 **Scripts** — Latin, Greek, Cyrillic, Hebrew, Arabic, Devanagari, Tamil,
 Bengali, Thai, Khmer, Myanmar, Han. Chosen to exercise combining marks,
@@ -99,6 +126,29 @@ non-NFC normalization, zero-width joiners.
 The trait list is why the corpus cannot be all-Latin and all-tidy: several
 [FILE-FIDELITY](../docs/FILE-FIDELITY.md) guarantees are only tested by files
 that are genuinely messy.
+
+### Six goals nothing published covers
+
+`verify` currently runs with `--skip-coverage` in CI, and the reason is not
+that the gate is inconvenient. Across a pool of 2,730 files from 53 sources,
+six goals have no candidate at all:
+
+| Missing | Why |
+|---|---|
+| `milestones`, `sidebars`, `custom_z` | Rare outside alignment-bearing texts. unfoldingWord's `\zaln-s` data is the obvious source, and is not yet listed. |
+| `bom`, `crlf`, `mixed_eol` | **Published Scripture never carries them.** Distributors normalise line endings and strip byte-order marks before publishing. |
+
+The second row is the awkward one, because those three traits are exactly what
+[FILE-FIDELITY](../docs/FILE-FIDELITY.md) exists to protect. No amount of
+additional real translations will supply them — a wider net cannot catch what
+nobody publishes. They have to be synthesised: either re-encoded variants of
+files already committed here, or fixtures that live in `tests/pathological/`
+and are exercised separately, in which case the trait list belongs there rather
+than in this corpus's coverage requirements.
+
+That decision is open. Until it is made, coverage is measured and reported but
+not enforced, so the gap stays visible rather than being quietly deleted from
+the requirements.
 
 ## Layout
 
@@ -139,6 +189,6 @@ changes silently, every downstream test failure becomes ambiguous.
 
 Rare, but sometimes a construct is not represented in anything eBible
 distributes. Put it in `corpus/core/`, add a `[[file]]` entry with a real
-`source` and `copyright`, and run `just corpus-verify`. Hand-authored
+`source` and `copyright`, and run `cargo xtask corpus verify`. Hand-authored
 pathological cases belong in `tests/pathological/` instead — they are not
 published Scripture and should not claim to be.
