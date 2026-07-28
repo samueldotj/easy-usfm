@@ -41,11 +41,15 @@ pub mod grapheme;
 pub mod markers;
 mod node;
 mod session;
+mod severity;
 mod span;
+mod version;
 
 pub use char16::{Char16, Char16Range, Utf16Mapper};
 pub use diagnostic::{Diagnostic, DiagnosticCode, Severity};
 pub use document::Document;
 pub use node::{Attribute, Marker, Node, NodeKind};
 pub use session::{Applied, Chunk, Edit, EditError, Session};
+pub use severity::DiagnosticConfig;
 pub use span::ByteSpan;
+pub use version::Version;

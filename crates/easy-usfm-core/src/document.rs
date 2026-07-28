@@ -3,6 +3,7 @@
 use std::cell::OnceCell;
 
 use crate::backend::Backend;
+use crate::severity::{self, DiagnosticConfig};
 use crate::{ByteSpan, Char16Range, Diagnostic, Node, Utf16Mapper};
 
 /// A USFM document: its source text, and what the engine has worked out about
@@ -26,6 +27,7 @@ pub struct Document {
     content: OnceCell<Vec<Node>>,
     diagnostics: OnceCell<Vec<Diagnostic>>,
     mapper: OnceCell<Utf16Mapper>,
+    config: DiagnosticConfig,
 }
 
 impl Document {
@@ -35,6 +37,13 @@ impl Document {
     /// costs little until something is asked of the result.
     pub fn parse(source: impl Into<String>) -> Self {
         let source = source.into();
+        let config = DiagnosticConfig::for_source(&source);
+        Self::parse_with(source, config)
+    }
+
+    /// Parses `source`, judging diagnostics as `config` says.
+    pub fn parse_with(source: impl Into<String>, config: DiagnosticConfig) -> Self {
+        let source = source.into();
         let backend = Backend::parse(&source);
 
         Self {
@@ -43,7 +52,12 @@ impl Document {
             content: OnceCell::new(),
             diagnostics: OnceCell::new(),
             mapper: OnceCell::new(),
+            config,
         }
+    }
+
+    pub fn config(&self) -> &DiagnosticConfig {
+        &self.config
     }
 
     /// The source text, exactly as it was given.
@@ -71,7 +85,23 @@ impl Document {
     /// incomplete work (PRODUCT §9).
     pub fn diagnostics(&self) -> &[Diagnostic] {
         self.diagnostics.get_or_init(|| {
-            let mut diagnostics = self.backend.diagnostics();
+            let mut diagnostics: Vec<Diagnostic> = self
+                .backend
+                .diagnostics()
+                .into_iter()
+                // Marker conditions are re-derived from the marker table with
+                // a version model the parser does not have. Keeping its copies
+                // would mean two diagnostics on one marker disagreeing about
+                // how much it matters.
+                .filter(|diagnostic| !severity::is_derived(diagnostic.code))
+                .chain(severity::marker_diagnostics(
+                    self.content(),
+                    &self.source,
+                    &self.config,
+                ))
+                .filter(|diagnostic| !self.config.is_suppressed(diagnostic.code))
+                .collect();
+
             diagnostics.sort_by_key(|diagnostic| diagnostic.span.start);
             diagnostics
         })

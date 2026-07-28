@@ -51,7 +51,9 @@ impl std::fmt::Display for Severity {
 ///
 /// P0.7 owns the complete catalogue and the severity derivation. What is here
 /// covers the conditions the parser can currently produce, plus those four.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+// Ord so codes can live in a set: suppression is by code, and a sorted set
+// keeps the settings interface's list stable between runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum DiagnosticCode {
     // ---- markers and nesting ----
     UnknownMarker,
@@ -111,6 +113,14 @@ pub enum DiagnosticCode {
     EmptyWordMarker,
     MissingMilestoneSelfClose,
     InvalidTableColumnSequence,
+
+    /// `USFM-I040` — the marker was introduced after the version the document
+    /// declares. Usually a stale `\usfm` line rather than a mistake.
+    MarkerNewerThanDocument,
+
+    /// `USFM-W041` — the USFM 2.x positional `\fig` syntax, where fields are
+    /// separated by `|` with no names. Carries a quick fix.
+    LegacyFigureSyntax,
 }
 
 impl DiagnosticCode {
@@ -159,6 +169,8 @@ impl DiagnosticCode {
             Self::EmptyWordMarker => "USFM-W037",
             Self::MissingMilestoneSelfClose => "USFM-E038",
             Self::InvalidTableColumnSequence => "USFM-E039",
+            Self::MarkerNewerThanDocument => "USFM-I040",
+            Self::LegacyFigureSyntax => "USFM-W041",
         }
     }
 
@@ -204,6 +216,8 @@ impl DiagnosticCode {
         Self::EmptyWordMarker,
         Self::MissingMilestoneSelfClose,
         Self::InvalidTableColumnSequence,
+        Self::MarkerNewerThanDocument,
+        Self::LegacyFigureSyntax,
     ];
 }
 
@@ -263,7 +277,7 @@ mod tests {
     fn all_lists_every_variant() {
         // A variant added without extending ALL would go unlisted in the
         // suppression interface, so the count is asserted rather than trusted.
-        assert_eq!(DiagnosticCode::ALL.len(), 39);
+        assert_eq!(DiagnosticCode::ALL.len(), 41);
     }
 
     #[test]

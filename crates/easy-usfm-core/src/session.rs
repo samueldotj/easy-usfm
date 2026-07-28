@@ -27,6 +27,7 @@
 use std::cell::OnceCell;
 
 use crate::backend::Backend;
+use crate::severity::{self, DiagnosticConfig};
 use crate::{ByteSpan, Diagnostic, DiagnosticCode, Node};
 
 /// One edit, in byte offsets against the document as it was **before** the
@@ -151,18 +152,30 @@ pub struct Session {
     source: String,
     chunks: Vec<Chunk>,
     rev: u64,
+    config: DiagnosticConfig,
 }
 
 impl Session {
     /// Partitions `source` into chunks. Parses nothing.
     pub fn new(source: impl Into<String>) -> Self {
         let source = source.into();
+        let config = DiagnosticConfig::for_source(&source);
+        Self::with_config(source, config)
+    }
+
+    pub fn with_config(source: impl Into<String>, config: DiagnosticConfig) -> Self {
+        let source = source.into();
         let chunks = split(&source, 0, 0);
         Self {
             source,
             chunks,
             rev: 0,
+            config,
         }
+    }
+
+    pub fn config(&self) -> &DiagnosticConfig {
+        &self.config
     }
 
     pub fn source(&self) -> &str {
@@ -372,6 +385,9 @@ impl Session {
                 diagnostics: backend
                     .diagnostics()
                     .into_iter()
+                    // Re-derived from the marker table below, with a version
+                    // model the parser does not have.
+                    .filter(|diagnostic| !severity::is_derived(diagnostic.code))
                     .filter(|diagnostic| is_header || !is_document_scoped(diagnostic.code))
                     // Anything the synthetic context provoked describes text
                     // the user did not write.
@@ -396,15 +412,27 @@ impl Session {
     }
 
     /// One chunk's diagnostics, in document coordinates.
+    ///
+    /// Marker conditions are derived here rather than cached with the chunk,
+    /// because they depend on the configuration — changing the target version
+    /// or suppressing a code must not require reparsing anything.
     pub fn chunk_diagnostics(&self, index: usize) -> Vec<Diagnostic> {
         let offset = self.chunks[index].start;
-        self.parse(index)
+        let parsed = self.parse(index);
+
+        parsed
             .diagnostics
             .iter()
             .map(|diagnostic| Diagnostic {
                 span: shift_span(&diagnostic.span, offset),
                 ..diagnostic.clone()
             })
+            .chain(severity::marker_diagnostics(
+                &self.chunk_content(index),
+                &self.source,
+                &self.config,
+            ))
+            .filter(|diagnostic| !self.config.is_suppressed(diagnostic.code))
             .collect()
     }
 
@@ -419,7 +447,11 @@ impl Session {
     pub fn diagnostics(&self) -> Vec<Diagnostic> {
         let mut all: Vec<Diagnostic> = (0..self.chunks.len())
             .flat_map(|index| self.chunk_diagnostics(index))
-            .chain(self.cross_chunk_diagnostics())
+            .chain(
+                self.cross_chunk_diagnostics()
+                    .into_iter()
+                    .filter(|diagnostic| !self.config.is_suppressed(diagnostic.code)),
+            )
             .collect();
         all.sort_by_key(|diagnostic| diagnostic.span.start);
         all

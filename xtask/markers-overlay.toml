@@ -58,7 +58,11 @@ default_attr = "gloss"
 
 [marker.fig]
 attributes = ["alt", "src", "size", "loc", "copy", "ref"]
-default_attr = "alt"
+# No default_attr. The specification's prose does not settle which attribute a
+# bare `\fig caption|value\fig*` assigns to, and the parser's own answer (src)
+# is how it silently absorbs the deprecated 2.x positional form. Asserting one
+# here would bake that behaviour into our table; USFM-W041 reports the
+# construct instead.
 
 [marker.jmp]
 since = "3.0"

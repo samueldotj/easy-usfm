@@ -226,7 +226,6 @@ nests_under = ["*"]
 text_type = "other"
 publishable = true
 attributes = ["alt", "src", "size", "loc", "copy", "ref"]
-default_attr = "alt"
 
 [fk]
 class = "character"
