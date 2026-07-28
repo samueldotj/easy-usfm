@@ -1,0 +1,33 @@
+# Its own workspace, as cargo-fuzz expects. Fuzz targets need nightly and
+# link against libFuzzer, so keeping them in the main workspace would make
+# `cargo build --workspace` fail on stable for everyone.
+[workspace]
+
+[package]
+name = "easy-usfm-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+rust-version = "1.85"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+easy-usfm-core = { path = "../crates/easy-usfm-core" }
+
+[[bin]]
+name = "parse"
+path = "fuzz_targets/parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "edit"
+path = "fuzz_targets/edit.rs"
+test = false
+doc = false
+bench = false

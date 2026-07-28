@@ -50,8 +50,16 @@ impl VerseId {
             return None;
         }
 
-        let (numbers, segment) = match text.chars().last() {
-            Some(last) if last.is_ascii_alphabetic() => (&text[..text.len() - 1], Some(last)),
+        // The segment letter may be from any script. The Septuagint numbers
+        // its segments α, β, γ — twenty-odd times in Proverbs alone in the
+        // committed corpus — and rejecting those reports real, published
+        // Scripture as malformed. Only the *number* must be ASCII; the
+        // specification constrains the digits, not the letter.
+        //
+        // Sliced by character rather than by byte, because a Greek letter is
+        // two bytes and `len() - 1` would land inside it.
+        let (numbers, segment) = match text.char_indices().next_back() {
+            Some((offset, last)) if last.is_alphabetic() => (&text[..offset], Some(last)),
             _ => (text, None),
         };
 
@@ -78,13 +86,18 @@ impl VerseId {
 
     /// Whether the two cover any number in common.
     ///
-    /// Segments deliberately do not overlap each other: `\v 1a` and `\v 1b`
-    /// are the two halves of one verse, not a duplicate.
+    /// **Different segments never collide**, including when one of them is
+    /// absent. `\v 1a` and `\v 1b` are two halves of one verse; `\v 22`
+    /// followed by `\v 22α` is how the Septuagint marks material additional
+    /// to verse 22, and both appear in the committed corpus. Treating a
+    /// segment as colliding with the bare verse it qualifies produced five
+    /// spurious errors in Proverbs alone.
+    ///
+    /// So a collision needs the same segment — or neither — and then
+    /// overlapping ranges. That leaves the cases that are genuinely wrong: the
+    /// same verse stated twice, and a range covering a verse stated separately.
     pub fn overlaps(&self, other: &Self) -> bool {
-        if self.segment.is_some() && other.segment.is_some() && self.segment != other.segment {
-            return false;
-        }
-        self.start <= other.end && other.start <= self.end
+        self.segment == other.segment && self.start <= other.end && other.start <= self.end
     }
 }
 
@@ -231,9 +244,17 @@ impl VerseIndex {
         }
 
         // ---- overlaps ----
+        //
+        // Only entries whose number actually parsed. An unparseable one is
+        // recorded as verse 0 so it stays visible, and treating those as real
+        // numbers made every malformed verse in a chapter "overlap" every
+        // other — twenty duplicate-verse errors that were all the same single
+        // problem, already reported above.
         let mut by_chapter: BTreeMap<u16, Vec<&VerseEntry>> = BTreeMap::new();
         for entry in &self.entries {
-            by_chapter.entry(entry.chapter).or_default().push(entry);
+            if VerseId::parse(&entry.raw).is_some() {
+                by_chapter.entry(entry.chapter).or_default().push(entry);
+            }
         }
 
         for (chapter, entries) in &by_chapter {
@@ -322,13 +343,30 @@ mod tests {
     }
 
     #[test]
-    fn segments_of_one_verse_are_not_duplicates_of_each_other() {
+    fn a_segment_letter_may_be_greek() {
+        // The Septuagint numbers segments α, β, γ. Found in the committed
+        // corpus, in Proverbs, twenty-odd times in one file — reported as
+        // malformed until the parser stopped insisting on ASCII letters.
+        let segment = VerseId::parse("18\u{3b1}").expect("a Greek segment");
+        assert_eq!(segment.start, 18);
+        assert_eq!(segment.segment, Some('\u{3b1}'));
+    }
+
+    #[test]
+    fn different_segments_never_collide() {
         // \v 1a and \v 1b are two halves of one verse.
         let a = VerseId::parse("1a").unwrap();
         let b = VerseId::parse("1b").unwrap();
         assert!(!a.overlaps(&b));
-        // But a whole verse does overlap one of its segments.
-        assert!(VerseId::single(1).overlaps(&a));
+
+        // And \v 22 followed by \v 22α is how the Septuagint marks additional
+        // material, not a duplicate. Real, and in the corpus.
+        let plain = VerseId::single(22);
+        let alpha = VerseId::parse("22\u{3b1}").unwrap();
+        assert!(!plain.overlaps(&alpha));
+
+        // The same segment stated twice is still a duplicate.
+        assert!(alpha.overlaps(&VerseId::parse("22\u{3b1}").unwrap()));
     }
 
     #[test]

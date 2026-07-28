@@ -43,6 +43,21 @@ jobs:
       - name: Performance budgets
         run: cargo test --package easy-usfm-core --release --test session -- --nocapture
 
+      # The fuzz invariants, run deterministically over real files. The fuzzer
+      # itself needs nightly and hours; this is the same assertions on every
+      # push, so a regression does not wait for the next fuzzing session.
+      - name: Engine invariants over the corpus
+        run: cargo run --release --package easy-usfm-cli -- check corpus/core
+
+      # ARCHITECTURE §11: 2 MB parses in under 400 ms native.
+      - name: Parse throughput
+        run: cargo run --release --package easy-usfm-cli -- bench corpus/core --budget-ms 400
+
+      # Ours versus usfm3 as normalized USJ. usfm-grammar is the opt-in third
+      # leg and is not run here; see ARCHITECTURE §12.1.
+      - name: Differential oracle
+        run: cargo xtask oracle
+
   wasm:
     name: wasm32 build
     runs-on: ubuntu-latest
