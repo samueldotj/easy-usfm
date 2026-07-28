@@ -305,17 +305,81 @@ impl Session {
         (first, last)
     }
 
+    /// The book code from `\id`, which chapter chunks need and cannot see.
+    ///
+    /// Scanned rather than parsed: this is wanted while parsing a chunk, and
+    /// parsing the header chunk to get it would make chunk parsing depend on
+    /// the order chunks happen to be asked for.
+    fn book_code(&self) -> Option<&str> {
+        let header = self.chunks.first()?;
+        if header.number.is_some() {
+            return None; // no header chunk, so no \id anywhere
+        }
+
+        self.source[header.start..header.end]
+            .lines()
+            .find_map(|line| line.strip_prefix("\\id"))
+            .and_then(|rest| {
+                rest.starts_with([' ', '\t'])
+                    .then(|| rest.split_whitespace().next())
+                    .flatten()
+            })
+    }
+
     fn parse(&self, index: usize) -> &ChunkParse {
         let chunk = &self.chunks[index];
         chunk.parsed.get_or_init(|| {
-            let backend = Backend::parse(&self.source[chunk.start..chunk.end]);
+            let text = &self.source[chunk.start..chunk.end];
             let is_header = chunk.number.is_none();
+
+            // A chapter is parsed inside the minimal context that makes it
+            // well-formed, which today means a synthetic `\id`.
+            //
+            // Not a nicety. `sid` -- the stable identifier USJ puts on every
+            // chapter and verse -- is derived from the book code, so a chapter
+            // parsed alone yields " 1:1" where the document yields "GEN 1:1".
+            // Every reference in the incremental path would be missing its
+            // book, and Go to Reference (P2.9) reads exactly this field.
+            // Discovered by P0.5 against the corpus: it affected 188 of 190
+            // files and nothing in P0.4's own tests could see it, because
+            // those tests compared chunked parses against each other.
+            //
+            // Prepending real context beats patching the one symptom: any
+            // other derivation that reaches back to the header is fixed by
+            // the same mechanism instead of waiting to be noticed.
+            let prefix = match (is_header, self.book_code()) {
+                (false, Some(code)) => format!("\\id {code}\n"),
+                _ => String::new(),
+            };
+            let offset = prefix.len();
+
+            let owned;
+            let source = if offset == 0 {
+                text
+            } else {
+                owned = format!("{prefix}{text}");
+                &owned
+            };
+
+            let backend = Backend::parse(source);
+
             ChunkParse {
-                content: backend.tree(),
+                content: backend
+                    .tree()
+                    .iter()
+                    .filter_map(|node| strip_prefix(node, offset))
+                    .collect(),
                 diagnostics: backend
                     .diagnostics()
                     .into_iter()
                     .filter(|diagnostic| is_header || !is_document_scoped(diagnostic.code))
+                    // Anything the synthetic context provoked describes text
+                    // the user did not write.
+                    .filter(|diagnostic| diagnostic.span.end > offset || offset == 0)
+                    .map(|diagnostic| Diagnostic {
+                        span: unshift_span(&diagnostic.span, offset),
+                        ..diagnostic
+                    })
                     .collect(),
             }
         })
@@ -518,6 +582,39 @@ const fn is_document_scoped(code: DiagnosticCode) -> bool {
 
 fn shift_span(span: &ByteSpan, by: usize) -> ByteSpan {
     ByteSpan::new(span.start + by, span.end + by)
+}
+
+fn unshift_span(span: &ByteSpan, by: usize) -> ByteSpan {
+    ByteSpan::new(span.start.saturating_sub(by), span.end.saturating_sub(by))
+}
+
+/// Removes the synthetic context a chapter chunk was parsed inside.
+///
+/// A node lying entirely within the prefix describes text the user never
+/// wrote — the synthetic `\id` itself — and is dropped along with its
+/// children. Everything else moves back by the prefix's length.
+fn strip_prefix(node: &Node, offset: usize) -> Option<Node> {
+    if offset == 0 {
+        return Some(node.clone());
+    }
+    if node.span.as_ref().is_some_and(|span| span.end <= offset) {
+        return None;
+    }
+
+    Some(Node {
+        kind: node.kind,
+        marker: node.marker.clone(),
+        attributes: node.attributes.clone(),
+        span: node.span.as_ref().map(|span| unshift_span(span, offset)),
+        anchor_cst: node.anchor_cst,
+        children: node
+            .children
+            .iter()
+            .filter_map(|child| strip_prefix(child, offset))
+            .collect(),
+        text: node.text.clone(),
+        raw: node.raw.as_ref().map(|span| unshift_span(span, offset)),
+    })
 }
 
 fn translate(node: &Node, by: usize) -> Node {

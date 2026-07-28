@@ -284,6 +284,14 @@ Ours versus `usfm3` isolates chunking bugs — if chunked parsing disagrees with
 
 Parsing a chapter in isolation must produce the same CST as parsing it in the whole document, asserted across the corpus, plus targeted cases: inserting `\c`, deleting `\c`, splitting a chapter, editing the header chunk, editing at the exact boundary.
 
+**A chapter is parsed inside the minimal context that makes it well-formed**, which today means a synthetic `\id` line, stripped from the result along with its spans.
+
+That is not tidiness. `sid` — the stable identifier USJ puts on every chapter and verse — is *derived from the book code*, so a chapter parsed alone yields `" 1:1"` where the document yields `"GEN 1:1"`. Every reference produced by the incremental path would have been missing its book, and Go to Reference (§P2.9) reads exactly that field.
+
+**P0.5 found this on 188 of 190 corpus files at the moment it was first run**, and nothing in P0.4's own test suite could have: those tests compare chunked parses against each other, where the error is perfectly consistent. It is the clearest argument for why this item is separate from the one it validates — a chunker tested only against itself is tested against its own assumptions.
+
+Prepending real context is preferred to correcting the one attribute, so that any other derivation reaching back to the header is fixed by the same mechanism rather than waiting to be noticed.
+
 ### 12.3 Fuzzing
 
 "Malformed USFM produces diagnostics without crashing" is a fuzzing claim, and only fuzzing establishes it. `cargo-fuzz` over arbitrary bytes asserts: never panics; always returns a tree, however degenerate; every offset in bounds and on a UTF-8 boundary; parse time sub-quadratic. Run against both our layer and `usfm3` directly. A 24-hour clean run gates each release.
