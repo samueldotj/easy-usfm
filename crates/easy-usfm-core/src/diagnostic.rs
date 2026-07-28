@@ -121,6 +121,14 @@ pub enum DiagnosticCode {
     /// `USFM-W041` — the USFM 2.x positional `\fig` syntax, where fields are
     /// separated by `|` with no names. Carries a quick fix.
     LegacyFigureSyntax,
+
+    /// `USFM-E042` — two verses in a chapter cover the same number. Includes
+    /// the case where a range overlaps a verse stated separately.
+    DuplicateVerse,
+
+    /// `USFM-I043` — a chapter skips a verse number. Information, because
+    /// intentional omissions are ordinary in published Scripture.
+    VerseGap,
 }
 
 impl DiagnosticCode {
@@ -171,6 +179,8 @@ impl DiagnosticCode {
             Self::InvalidTableColumnSequence => "USFM-E039",
             Self::MarkerNewerThanDocument => "USFM-I040",
             Self::LegacyFigureSyntax => "USFM-W041",
+            Self::DuplicateVerse => "USFM-E042",
+            Self::VerseGap => "USFM-I043",
         }
     }
 
@@ -218,6 +228,8 @@ impl DiagnosticCode {
         Self::InvalidTableColumnSequence,
         Self::MarkerNewerThanDocument,
         Self::LegacyFigureSyntax,
+        Self::DuplicateVerse,
+        Self::VerseGap,
     ];
 }
 
@@ -277,7 +289,7 @@ mod tests {
     fn all_lists_every_variant() {
         // A variant added without extending ALL would go unlisted in the
         // suppression interface, so the count is asserted rather than trusted.
-        assert_eq!(DiagnosticCode::ALL.len(), 41);
+        assert_eq!(DiagnosticCode::ALL.len(), 43);
     }
 
     #[test]

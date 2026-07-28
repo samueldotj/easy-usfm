@@ -43,6 +43,7 @@ mod node;
 mod session;
 mod severity;
 mod span;
+mod verse;
 mod version;
 
 pub use char16::{Char16, Char16Range, Utf16Mapper};
@@ -52,4 +53,5 @@ pub use node::{Attribute, Marker, Node, NodeKind};
 pub use session::{Applied, Chunk, Edit, EditError, Session};
 pub use severity::DiagnosticConfig;
 pub use span::ByteSpan;
+pub use verse::{VerseEntry, VerseId, VerseIndex};
 pub use version::Version;

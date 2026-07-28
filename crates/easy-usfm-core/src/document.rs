@@ -4,7 +4,7 @@ use std::cell::OnceCell;
 
 use crate::backend::Backend;
 use crate::severity::{self, DiagnosticConfig};
-use crate::{ByteSpan, Char16Range, Diagnostic, Node, Utf16Mapper};
+use crate::{ByteSpan, Char16Range, Diagnostic, Node, Utf16Mapper, VerseIndex};
 
 /// A USFM document: its source text, and what the engine has worked out about
 /// it.
@@ -27,6 +27,7 @@ pub struct Document {
     content: OnceCell<Vec<Node>>,
     diagnostics: OnceCell<Vec<Diagnostic>>,
     mapper: OnceCell<Utf16Mapper>,
+    verses: OnceCell<VerseIndex>,
     config: DiagnosticConfig,
 }
 
@@ -52,6 +53,7 @@ impl Document {
             content: OnceCell::new(),
             diagnostics: OnceCell::new(),
             mapper: OnceCell::new(),
+            verses: OnceCell::new(),
             config,
         }
     }
@@ -99,12 +101,22 @@ impl Document {
                     &self.source,
                     &self.config,
                 ))
+                .chain(self.verses().diagnostics())
                 .filter(|diagnostic| !self.config.is_suppressed(diagnostic.code))
                 .collect();
 
             diagnostics.sort_by_key(|diagnostic| diagnostic.span.start);
             diagnostics
         })
+    }
+
+    /// Every verse in the document, in source order.
+    ///
+    /// Built on first use. Ranges, segments, alternate and published numbers
+    /// are all modelled — see [`VerseIndex`].
+    pub fn verses(&self) -> &VerseIndex {
+        self.verses
+            .get_or_init(|| VerseIndex::build(self.content()))
     }
 
     /// The byte-to-Char16 mapper for this document's source.

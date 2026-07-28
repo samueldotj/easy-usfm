@@ -28,7 +28,7 @@ use std::cell::OnceCell;
 
 use crate::backend::Backend;
 use crate::severity::{self, DiagnosticConfig};
-use crate::{ByteSpan, Diagnostic, DiagnosticCode, Node};
+use crate::{ByteSpan, Diagnostic, DiagnosticCode, Node, VerseIndex};
 
 /// One edit, in byte offsets against the document as it was **before** the
 /// batch was applied.
@@ -457,12 +457,19 @@ impl Session {
         all
     }
 
+    /// Every verse in the document, in source order.
+    ///
+    /// Built across chunks, because verse numbering is only meaningful as a
+    /// whole — a chapter cannot tell whether another repeats its verses.
+    pub fn verses(&self) -> VerseIndex {
+        VerseIndex::build(&self.content())
+    }
+
     /// Tier 3 — what no single chunk can see.
     ///
-    /// Derived from chunk summaries rather than from the tree, so it is
-    /// O(chunks) and can run unconditionally after every edit. Duplicate
-    /// chapters are all it covers today; verse sequencing and range overlap
-    /// are P0.8, and belong here for the same reason.
+    /// Duplicate chapters and the whole verse index: both are questions about
+    /// the relationship between chunks, which is exactly what a chunk cannot
+    /// answer from inside itself (ARCHITECTURE §8.2).
     fn cross_chunk_diagnostics(&self) -> Vec<Diagnostic> {
         let mut seen: Vec<(u32, usize)> = Vec::new();
         let mut diagnostics = Vec::new();
@@ -481,6 +488,7 @@ impl Session {
             }
         }
 
+        diagnostics.extend(self.verses().diagnostics());
         diagnostics
     }
 }
