@@ -39,7 +39,13 @@ scripts/bootstrap.sh
 Installs Python, Rust with the `wasm32-unknown-unknown` target, Node, and
 [`just`](https://github.com/casey/just), skipping anything already present, then
 runs a self-test. Add `-Minimal` / `--minimal` for **Python only**, which is all
-the corpus tooling needs and all that is required today.
+the corpus tooling needs.
+
+On Windows it also installs the Visual C++ build tools, because rustup defaults
+to the MSVC target and without a linker nothing compiles at all — not even a
+wasm-only build, since proc-macro crates are built for the host. It is a large
+download; `-SkipBuildTools` uses the `gnu` target instead, which brings its own
+linker, at the cost of diverging from what Tauri targets on Windows.
 
 **Open a new terminal afterwards** — PATH changes do not reach a shell that was
 already running.
