@@ -38,6 +38,7 @@ mod char16;
 mod diagnostic;
 mod document;
 pub mod grapheme;
+pub mod markers;
 mod node;
 mod session;
 mod span;

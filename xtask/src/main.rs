@@ -17,6 +17,7 @@ mod corpus;
 mod features;
 mod github;
 mod manifest;
+mod markers;
 
 #[cfg(test)]
 mod tests;
@@ -33,6 +34,19 @@ enum Task {
     /// Test corpus: fetch, select, verify, classify
     #[command(subcommand)]
     Corpus(CorpusCmd),
+    /// Marker table generated from the USFM specification
+    #[command(subcommand)]
+    Markers(MarkersCmd),
+}
+
+#[derive(Subcommand)]
+enum MarkersCmd {
+    /// Regenerate crates/easy-usfm-core/markers.toml
+    Generate {
+        /// Use the cached stylesheets rather than downloading them
+        #[arg(long)]
+        offline: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -162,6 +176,9 @@ fn main() -> Result<()> {
                 };
                 corpus::classify(&paths, coverage)
             }
+        },
+        Task::Markers(cmd) => match cmd {
+            MarkersCmd::Generate { offline } => markers::generate(offline),
         },
     }
 }

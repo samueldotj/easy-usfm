@@ -55,6 +55,6 @@ Thumbs.db
 corpus/extended/
 corpus/.catalog.csv
 
-# --- Python tooling ---
-__pycache__/
-*.py[cod]
+# --- Specification stylesheets, cached by `xtask markers generate` ---
+# markers.toml is generated from these and committed; the sources are not.
+xtask/.spec/
