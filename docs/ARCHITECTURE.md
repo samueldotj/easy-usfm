@@ -280,6 +280,12 @@ corpus file ──┬──► easy-usfm-core   ──► normalized USJ
 
 Ours versus `usfm3` isolates chunking bugs — if chunked parsing disagrees with whole-document parsing, the fault is ours. Both versus `usfm-grammar` isolates genuine interpretation differences. Two of the three are already Rust dependencies, so this costs almost nothing.
 
+Run with `cargo xtask oracle`. **Zero unexplained differences over 200 files**, where *unexplained* is load-bearing: each reconciliation the harness applies names a difference that has been chased down, and anything unlisted fails the run.
+
+**One was found on the first run.** `usfm3` renders marker attributes as `attributes: [{key, value}]`. The USJ schema ([`usfm-bible/tcdocs:grammar/usj.js`](https://github.com/usfm-bible/tcdocs/blob/main/grammar/usj.js)) declares no such property — `sid`, `number`, `code`, `caller`, `align`, and `category` sit directly on the node, and marker attributes like `src` and `lemma` join them the same way. Ours follows the schema; `usfm3`'s does not. It surfaced on five corpus files carrying figures, and matters beyond us: anything consuming `usfm3`'s USJ *as USJ* mis-reads every attribute in it. Worth raising upstream.
+
+**The third leg is opt-in and currently unrunnable.** `cargo xtask oracle --with-grammar` needs `npm install usfm-grammar`, which fails on Node 24: `usfm-grammar` 3.x depends on native `tree-sitter` 0.25, whose build forces `/std:c++17` while Node 24's V8 headers require C++20. Node 22 is the workaround. Worth noting that this makes `usfm-grammar` 3.x a dependent of the same generated-C tree-sitter stack [ADR-001](adr/001-parser.md) rejected — the toolchain cost that ADR anticipated, arriving from the other direction.
+
 ### 12.2 Chunk-boundary equivalence
 
 Parsing a chapter in isolation must produce the same CST as parsing it in the whole document, asserted across the corpus, plus targeted cases: inserting `\c`, deleting `\c`, splitting a chapter, editing the header chunk, editing at the exact boundary.

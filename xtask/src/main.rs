@@ -18,6 +18,7 @@ mod features;
 mod github;
 mod manifest;
 mod markers;
+mod oracle;
 
 #[cfg(test)]
 mod tests;
@@ -37,6 +38,20 @@ enum Task {
     /// Marker table generated from the USFM specification
     #[command(subcommand)]
     Markers(MarkersCmd),
+    /// Differential oracle: diff the corpus across the implementations
+    Oracle {
+        #[arg(long)]
+        corpus: Option<PathBuf>,
+        /// Include usfm-grammar. Needs node and `npm install usfm-grammar`.
+        #[arg(long)]
+        with_grammar: bool,
+        /// Stop after this many files
+        #[arg(long)]
+        limit: Option<usize>,
+        /// Show every difference rather than the first few
+        #[arg(long)]
+        verbose: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -180,5 +195,16 @@ fn main() -> Result<()> {
         Task::Markers(cmd) => match cmd {
             MarkersCmd::Generate { offline } => markers::generate(offline),
         },
+        Task::Oracle {
+            corpus,
+            with_grammar,
+            limit,
+            verbose,
+        } => oracle::run(&oracle::OracleOpts {
+            corpus,
+            with_grammar,
+            limit,
+            verbose,
+        }),
     }
 }

@@ -15,7 +15,7 @@ usfm3.workspace = true
 serde.workspace = true
 unicode-segmentation.workspace = true
 unicode-normalization.workspace = true
+serde_json.workspace = true
 
 [dev-dependencies]
-serde_json.workspace = true
 proptest.workspace = true

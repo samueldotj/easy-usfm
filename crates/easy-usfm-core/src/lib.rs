@@ -44,6 +44,7 @@ mod normalize;
 mod session;
 mod severity;
 mod span;
+mod usj;
 mod verse;
 mod version;
 
@@ -55,5 +56,6 @@ pub use normalize::NormalizedIndex;
 pub use session::{Applied, Chunk, Edit, EditError, Session};
 pub use severity::DiagnosticConfig;
 pub use span::ByteSpan;
+pub use usj::to_usj;
 pub use verse::{VerseEntry, VerseId, VerseIndex};
 pub use version::Version;

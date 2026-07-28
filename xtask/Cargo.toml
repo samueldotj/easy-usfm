@@ -8,6 +8,13 @@ repository.workspace = true
 publish = false
 
 [dependencies]
+# The oracle needs both our layer and the parser it wraps, side by side. This
+# is development tooling rather than a layer above the facade, so ADR-001's
+# containment is untouched -- and it is the only place the two may legitimately
+# be named together.
+easy-usfm-core = { path = "../crates/easy-usfm-core" }
+usfm3.workspace = true
+
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 csv = "1"
