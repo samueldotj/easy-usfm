@@ -28,7 +28,7 @@ use std::cell::OnceCell;
 
 use crate::backend::Backend;
 use crate::severity::{self, DiagnosticConfig};
-use crate::{ByteSpan, Diagnostic, DiagnosticCode, Node, VerseIndex};
+use crate::{ByteSpan, Diagnostic, DiagnosticCode, Node, NormalizedIndex, VerseIndex};
 
 /// One edit, in byte offsets against the document as it was **before** the
 /// batch was applied.
@@ -114,6 +114,14 @@ pub struct Chunk {
     end: usize,
     rev: u64,
     parsed: OnceCell<ChunkParse>,
+    /// The NFC search index, on the same schedule as the parse.
+    ///
+    /// Held per chunk rather than per document precisely so it rebuilds when
+    /// the chunk does. UNICODE §4 asks for exactly that — "rebuilt on the same
+    /// dirty-chunk schedule as the parse, so it costs nothing extra" — and
+    /// holding one index for the whole document would mean renormalising two
+    /// megabytes on every keystroke.
+    normalized: OnceCell<NormalizedIndex>,
 }
 
 impl Chunk {
@@ -457,6 +465,42 @@ impl Session {
         all
     }
 
+    /// The NFC search index for one chunk, built on first use.
+    fn normalized(&self, index: usize) -> &NormalizedIndex {
+        let chunk = &self.chunks[index];
+        chunk
+            .normalized
+            .get_or_init(|| NormalizedIndex::build(&self.source[chunk.start..chunk.end]))
+    }
+
+    /// Every occurrence of `query`, in document byte coordinates.
+    ///
+    /// Comparison is in NFC, so an NFC query finds NFD text and the other way
+    /// round, while the buffer itself is never normalized (UNICODE §4).
+    ///
+    /// Searched per chunk, which is what keeps the index on the dirty-chunk
+    /// schedule. The cost is that a match spanning a chapter boundary is not
+    /// found — a phrase running across a `\c` line, which is not a thing
+    /// anyone searches for, and the alternative is renormalising the whole
+    /// document on every keystroke.
+    pub fn find(&self, query: &str) -> Vec<ByteSpan> {
+        (0..self.chunks.len())
+            .flat_map(|index| {
+                let offset = self.chunks[index].start;
+                self.normalized(index)
+                    .find(query)
+                    .into_iter()
+                    .map(move |span| shift_span(&span, offset))
+            })
+            .collect()
+    }
+
+    /// Whether every chunk is already NFC. `false` is what `USFM-I021`
+    /// reports.
+    pub fn is_normalized(&self) -> bool {
+        (0..self.chunks.len()).all(|index| self.normalized(index).is_normalized())
+    }
+
     /// Every verse in the document, in source order.
     ///
     /// Built across chunks, because verse numbering is only meaningful as a
@@ -489,6 +533,23 @@ impl Session {
         }
 
         diagnostics.extend(self.verses().diagnostics());
+
+        // USFM-I021. Reported once for the document rather than once per
+        // occurrence: the answer is a single command, and a diagnostic on
+        // every decomposed character would bury everything else.
+        if let Some(first) = self.chunks.first() {
+            if !self.is_normalized() {
+                diagnostics.push(Diagnostic {
+                    code: DiagnosticCode::MixedNormalization,
+                    severity: crate::Severity::Information,
+                    span: ByteSpan::new(first.start, first.start),
+                    message: "this document is not entirely in NFC; searching still \
+                              works, and View → Normalize to NFC will convert it"
+                        .to_string(),
+                });
+            }
+        }
+
         diagnostics
     }
 }
@@ -532,6 +593,7 @@ fn split(text: &str, base: usize, rev: u64) -> Vec<Chunk> {
             end: base + end,
             rev,
             parsed: OnceCell::new(),
+            normalized: OnceCell::new(),
         });
     };
 

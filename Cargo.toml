@@ -18,6 +18,7 @@ usfm3 = "=0.2.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 unicode-segmentation = "1"
+unicode-normalization = "0.1"
 proptest = "1"
 
 [profile.release]
