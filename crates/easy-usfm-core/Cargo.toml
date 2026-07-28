@@ -1,0 +1,18 @@
+[package]
+name = "easy-usfm-core"
+version = "0.1.0"
+description = "USFM parsing facade: document model, diagnostics, and source spans"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# The parser sits behind this crate's facade and is never named in its public
+# API. ADR-001. Confined to `src/backend/`, which `tests/facade_boundary.rs`
+# enforces.
+usfm3.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

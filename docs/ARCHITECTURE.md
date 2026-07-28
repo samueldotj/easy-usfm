@@ -101,15 +101,20 @@ The tree is the USJ content model ([ADR-004](adr/004-usj-model.md)), extended wi
 
 ```rust
 pub struct Node {
-    pub kind: UsjKind,          // book | chapter | verse | para | char | note
-                                // | ms | table | sidebar | figure | text
-    pub marker: Option<Tag>,
-    pub attributes: Vec<Attribute>,
-    pub span: ByteRange,        // internal; Char16 at the boundary
+    pub kind: NodeKind,             // book | chapter | verse | para | char | note | ms
+                                    // | figure | sidebar | periph | table | table:row
+                                    // | table:cell | ref | optbreak | unknown | text
+    pub marker: Option<Marker>,
+    pub attributes: Vec<Attribute>, // node properties and `|` attributes alike, as USJ does
+    pub span: Option<ByteSpan>,     // internal; Char16 at the boundary
+    pub anchor_cst: Option<usize>,
     pub children: Vec<Node>,
-    pub raw: Option<RawSpan>,   // preserved verbatim
+    pub text: Option<String>,       // text nodes only
+    pub raw: Option<ByteSpan>,      // preserved verbatim
 }
 ```
+
+**`span` is optional, and that is a finding rather than a convenience.** `usfm3` keeps source locations in a tree parallel to the syntax tree, and populates it for structural nodes only — text and optional-break leaves are recorded with no span *and no CST anchor*. So the AST path cannot locate text at all, and recovering text spans means descending to the CST. Modelling the absence honestly is what keeps a fabricated zero span from reaching click-to-source (§12.2, P3.6), where it would place the cursor at the top of the file and read as a rendering bug. `anchor_cst` is the route by which those spans become recoverable.
 
 ## 6. The marker table
 
