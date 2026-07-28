@@ -180,14 +180,22 @@ Nothing is O(document) on a keystroke except lexing, which is O(edited lines). T
 **Tier 2 — chapter-scoped parse.** The document partitions at `\c` into chunks, plus a header chunk for everything before `\c 1`. An edit marks its chunk dirty; `parse_cst` runs on that chunk's range only and the CST is spliced. Inserting or deleting a `\c` splits or merges neighbours — the only case where more than one chunk reparses.
 
 ```rust
-pub struct ChapterChunk {
-    pub number: Option<u32>,          // None for the header chunk
-    pub byte_range: Range<usize>,
-    pub rev: u64,
-    pub cst: CstDocument,
-    pub diagnostics: Vec<Diagnostic>,
+pub struct Chunk {
+    number: Option<u32>,              // None for the header chunk
+    start: usize,
+    end: usize,
+    rev: u64,
+    parsed: OnceCell<ChunkParse>,     // spans stored chunk-relative
 }
 ```
+
+**Spans are stored relative to the chunk**, and translated to document coordinates on read. This is the decision the rest of the design follows from. Storing document coordinates would mean that inserting one character in chapter 1 shifts every offset in every later chapter — so every cached parse in the document would need rewriting on every keystroke. That is O(document) work reached by the back door, in the layer that exists to avoid it. Chunk-relative storage makes a shift two integers per chunk.
+
+The parse is behind a cell because an edit should cost nothing until something asks what changed; the preview asks for the dirty chunk and nothing else.
+
+**Two diagnostic classes cannot come from a chunk.** A chapter parsed alone has no `\id`, so the parser reports one missing — correctly for the text it was given, and uselessly, a hundred times over. And no chunk can see its neighbours, so chapter and verse *sequencing* is guesswork from inside one. Both are suppressed per-chunk and answered by Tier 3.
+
+**Measured at P0.4**, 2 MB, 687 chunks: one-chunk reparse **65 µs** against a 15 ms budget; whole-document parse 22.7 ms. Chunking is worth roughly 480×.
 
 **Tier 3 — cross-chunk index.** Verse sequencing, duplicate detection, and the chapter/verse index derive from chunk summaries rather than the full tree. O(chunks), cheap enough to run unconditionally.
 

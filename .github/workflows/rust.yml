@@ -37,6 +37,12 @@ jobs:
       - name: Test
         run: cargo test --workspace
 
+      # The performance budgets are compiled out of debug builds. A debug build
+      # is roughly an order of magnitude slower, so asserting 15 ms there would
+      # fail on a correct implementation and train everyone to ignore it.
+      - name: Performance budgets
+        run: cargo test --package easy-usfm-core --release --test session -- --nocapture
+
   wasm:
     name: wasm32 build
     runs-on: ubuntu-latest

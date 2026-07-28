@@ -39,10 +39,12 @@ mod diagnostic;
 mod document;
 pub mod grapheme;
 mod node;
+mod session;
 mod span;
 
 pub use char16::{Char16, Char16Range, Utf16Mapper};
 pub use diagnostic::{Diagnostic, DiagnosticCode, Severity};
 pub use document::Document;
 pub use node::{Attribute, Marker, Node, NodeKind};
+pub use session::{Applied, Chunk, Edit, EditError, Session};
 pub use span::ByteSpan;
