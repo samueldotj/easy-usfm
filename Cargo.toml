@@ -1,0 +1,24 @@
+[workspace]
+resolver = "2"
+members = ["crates/*", "xtask"]
+
+[workspace.package]
+edition = "2021"
+# usfm3 0.2.1 is edition 2024 and declares no rust-version of its own, so an
+# older toolchain fails to compile it rather than reporting a version conflict.
+# 1.85 is the floor edition 2024 requires. ADR-001.
+rust-version = "1.85"
+license = "MIT"
+repository = "https://github.com/samueldotj/easy-usfm"
+
+[workspace.dependencies]
+# Pinned exactly, and taken deliberately with the corpus suite as the gate.
+# ADR-001 — the version lives here so there is one place to change it.
+usfm3 = "=0.2.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
