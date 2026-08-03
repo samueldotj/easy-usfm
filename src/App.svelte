@@ -1,39 +1,81 @@
 <script lang="ts">
   import { onMount } from "svelte";
+
   import Editor from "./components/Editor.svelte";
   import SplitPane from "./components/SplitPane.svelte";
-  import ThemeSelect from "./components/ThemeSelect.svelte";
-  import { engineVersion } from "./lib/shell";
+  import Toolbar from "./components/Toolbar.svelte";
+  import { doc } from "./lib/document.svelte";
+  import { isDesktop } from "./lib/shell";
 
-  const SAMPLE = `\\id GEN Genesis
-\\h Genesis
-\\mt1 The First Book of Moses
-\\c 1
-\\p
-\\v 1 In the beginning God created the heaven and the earth.
-\\v 2 And the earth was without form, and void.
-`;
-
-  let engine = $state<string | null>(null);
-  let source = $state(SAMPLE);
   let editor: Editor | undefined = $state();
+  let error = $state<string | null>(null);
 
-  // Counted in UTF-16 code units, which is what CodeMirror and the DOM count
-  // in (UNICODE §1). The status bar will show graphemes once there is a cursor
-  // to report a column for (P2.9).
-  const units = $derived(source.length);
-  const lines = $derived(source.split("\n").length);
+  const lines = $derived(doc.text.split("\n").length);
 
   onMount(async () => {
-    engine = await engineVersion().catch(() => null);
+    await run(() => doc.createNew());
+    if (isDesktop()) await guardTheWindow();
   });
 
-  // F6 cycles pane focus (PRODUCT §7). Only the editor exists to focus today;
-  // the preview joins the cycle at P3.1.
+  $effect(() => {
+    document.title = doc.title;
+  });
+
+  /** Anything that touches a file can fail; none of it should be silent. */
+  async function run(action: () => Promise<unknown>): Promise<void> {
+    try {
+      error = null;
+      await action();
+    } catch (cause) {
+      error = cause instanceof Error ? cause.message : String(cause);
+    }
+  }
+
+  async function load(action: () => Promise<unknown>): Promise<void> {
+    if (!(await doc.confirmDiscard())) return;
+    await run(action);
+    editor?.load(doc.text);
+  }
+
+  /**
+   * Closing the window must not discard unsaved work.
+   *
+   * PRODUCT §3 lists the unsaved-change warning as part of the lifecycle, and
+   * the shell has to be asked not to close rather than told afterwards.
+   */
+  async function guardTheWindow(): Promise<void> {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    const window = getCurrentWindow();
+
+    await window.onCloseRequested(async (event) => {
+      if (!(await doc.confirmDiscard())) event.preventDefault();
+    });
+  }
+
   function onKeyDown(event: KeyboardEvent): void {
+    // Ctrl on Windows and Linux, Command on macOS (PRODUCT §7).
+    const accel = event.ctrlKey || event.metaKey;
+
     if (event.key === "F6") {
       event.preventDefault();
       editor?.focus();
+      return;
+    }
+    if (!accel) return;
+
+    switch (event.key.toLowerCase()) {
+      case "n":
+        event.preventDefault();
+        void load(() => doc.createNew());
+        break;
+      case "o":
+        event.preventDefault();
+        void load(() => doc.open());
+        break;
+      case "s":
+        event.preventDefault();
+        void run(() => (event.shiftKey ? doc.saveAs() : doc.save()));
+        break;
     }
   }
 </script>
@@ -41,25 +83,30 @@
 <svelte:window onkeydown={onKeyDown} />
 
 <div class="app">
-  <header>
-    <span class="title">Easy USFM</span>
-    <div class="spacer"></div>
-    <ThemeSelect />
-  </header>
+  <Toolbar
+    onnew={() => void load(() => doc.createNew())}
+    onopen={(path) => void load(() => doc.open(path))}
+    onsave={() => void run(() => doc.save())}
+    onsaveas={() => void run(() => doc.saveAs())}
+  />
+
+  {#if error}
+    <p class="error" role="alert">{error}</p>
+  {/if}
 
   <main>
     <SplitPane id="main" startLabel="USFM source" endLabel="Preview">
       {#snippet start()}
-        <Editor bind:this={editor} value={source} onchange={(next) => (source = next)} />
+        <Editor
+          bind:this={editor}
+          value={doc.text}
+          onchange={(text, changes) => doc.edited(text, changes)}
+        />
       {/snippet}
 
       {#snippet end()}
         <div class="placeholder">
           <p>The preview arrives with M3.</p>
-          <p class="hint">
-            Until then this pane holds the space, so the split it has to live in
-            is the one everything else is built around.
-          </p>
         </div>
       {/snippet}
     </SplitPane>
@@ -67,9 +114,17 @@
 
   <footer>
     <span>{lines} lines</span>
-    <span>{units} UTF-16 units</span>
+    <span>{doc.text.length} UTF-16 units</span>
+    {#if doc.summary}
+      <span>{doc.summary.encoding}</span>
+      <span title={doc.summary.mixed_eol ? "This file mixes line endings" : ""}>
+        {doc.summary.eol}
+      </span>
+      {#if doc.summary.bom}<span>BOM</span>{/if}
+    {/if}
     <div class="spacer"></div>
-    <span>{engine ? `Engine ${engine}` : "Engine unavailable"}</span>
+    {#if doc.saveNote}<span class="note">Saved via {doc.saveNote}</span>{/if}
+    <span>{doc.dirty ? "Unsaved changes" : "Saved"}</span>
   </footer>
 </div>
 
@@ -80,34 +135,34 @@
     block-size: 100%;
   }
 
-  header,
   footer {
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    padding-block: 0.35rem;
+    padding-block: 0.3rem;
     padding-inline: 0.75rem;
     background: var(--surface-sunken);
+    border-block-start: 1px solid var(--border);
     font-size: 0.8125rem;
     color: var(--text-muted);
     flex: 0 0 auto;
   }
 
-  header {
-    border-block-end: 1px solid var(--border);
-  }
-
-  footer {
-    border-block-start: 1px solid var(--border);
-  }
-
-  .title {
-    font-weight: 600;
-    color: var(--text);
-  }
-
   .spacer {
     flex: 1 1 auto;
+  }
+
+  .note {
+    color: var(--accent);
+  }
+
+  .error {
+    margin: 0;
+    padding-block: 0.4rem;
+    padding-inline: 0.75rem;
+    background: #7f1d1d;
+    color: #fff;
+    font-size: 0.8125rem;
   }
 
   main {
@@ -117,17 +172,10 @@
 
   .placeholder {
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
     block-size: 100%;
-    padding-inline: 2rem;
-    text-align: center;
     color: var(--text-muted);
-  }
-
-  .hint {
-    max-inline-size: 34ch;
-    font-size: 0.8125rem;
+    font-size: 0.875rem;
   }
 </style>

@@ -4,11 +4,13 @@
   import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
   import { onMount } from "svelte";
 
+  import { changesOf, type Change } from "../lib/eol";
+
   interface Props {
     value?: string;
     /** Document direction. UNICODE §8 — explicit, never inherited. */
     direction?: "ltr" | "rtl";
-    onchange?: (value: string) => void;
+    onchange?: (value: string, changes: Change[]) => void;
   }
 
   let { value = "", direction = "ltr", onchange }: Props = $props();
@@ -45,7 +47,12 @@
           // block -- Svelte's parser reads it even inside a comment.
 
           EditorView.updateListener.of((update) => {
-            if (update.docChanged) onchange?.(update.state.doc.toString());
+            // The changes go with the text, because the per-line terminator
+            // array can only be remapped by something that knows how the
+            // transaction moved the lines (P1.4).
+            if (update.docChanged) {
+              onchange?.(update.state.doc.toString(), changesOf(update.changes));
+            }
           }),
         ],
       }),
@@ -57,6 +64,20 @@
   /** Focus the editor. Used by F6 pane cycling. */
   export function focus(): void {
     view?.focus();
+  }
+
+  /**
+   * Replaces the whole document, without recording it as an edit.
+   *
+   * Opening a file is not a change to the one that was open, so this bypasses
+   * the update listener's dirty tracking by replacing the state outright.
+   */
+  export function load(text: string): void {
+    if (!view) return;
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: text },
+      annotations: [],
+    });
   }
 </script>
 

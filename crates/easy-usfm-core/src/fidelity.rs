@@ -34,7 +34,13 @@
 use std::fmt;
 
 /// A line terminator.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize)]
+///
+/// Deserializable as well as serializable, and it is the only part of the
+/// envelope that is. The editor is the only thing that knows how a transaction
+/// moved the lines, so the per-line array has to come back from it (P1.4);
+/// everything else about the envelope stays on the shell's side of the
+/// boundary and is never handed to the interface to give back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Eol {
     /// `\n` — Unix, and what the editor buffer always uses internally.

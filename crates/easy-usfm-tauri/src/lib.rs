@@ -6,12 +6,14 @@
 //! stays a file-access layer however tempting it becomes to call the parser it
 //! already links against.
 //!
-//! Almost all of this crate's work is still ahead of it: the atomic save
-//! ladder (P1.5–P1.7), fault injection (P1.8), the document lifecycle (P1.10),
-//! and recovery and watching (Phase 4).
+//! Still ahead of it: recovery and watching (Phase 4), and per-platform menus
+//! (P6.1).
 
+pub mod document;
 pub mod fs;
 pub mod save;
+
+use document::Documents;
 
 /// The engine version, and the round trip that proves the two halves are
 /// talking.
@@ -28,7 +30,15 @@ fn engine_version() -> String {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![engine_version])
+        .plugin(tauri_plugin_dialog::init())
+        .manage(Documents::default())
+        .invoke_handler(tauri::generate_handler![
+            engine_version,
+            document::new_document,
+            document::open_document,
+            document::save_document,
+            document::close_document,
+        ])
         .run(tauri::generate_context!())
         .expect("the application failed to start");
 }
