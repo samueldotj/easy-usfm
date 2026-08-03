@@ -31,11 +31,16 @@ jobs:
       - name: Format
         run: cargo fmt --all --check
 
+      # The desktop shell is excluded and built by `desktop.yml` instead. It
+      # pulls in a system webview -- and on Linux, half of GTK -- which would
+      # turn an engine job that runs in seconds into one that runs in minutes,
+      # for no benefit: ARCHITECTURE §3 keeps `easy-usfm-core` standalone
+      # precisely so this job can stay fast and platform-independent.
       - name: Clippy
-        run: cargo clippy --workspace --all-targets
+        run: cargo clippy --workspace --exclude easy-usfm-tauri --all-targets
 
       - name: Test
-        run: cargo test --workspace
+        run: cargo test --workspace --exclude easy-usfm-tauri
 
       # The performance budgets are compiled out of debug builds. A debug build
       # is roughly an order of magnitude slower, so asserting 15 ms there would

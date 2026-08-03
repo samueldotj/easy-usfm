@@ -53,8 +53,22 @@ corpus-rebuild: corpus-fetch corpus-select corpus-verify
 
 # ---------------------------------------------------------------- engine ---
 
-# Everything CI runs, in the order it runs it
+# Everything the engine CI runs, in the order it runs it
 check: fmt-check lint test wasm
+
+# ---------------------------------------------------------------- desktop ---
+
+# Run the desktop shell against the dev server
+dev:
+    npm run tauri:dev
+
+# Build the installable bundle
+app:
+    npm run tauri:build
+
+# Type-check the frontend
+tsc:
+    npm run check
 
 fmt:
     cargo fmt --all
@@ -62,11 +76,13 @@ fmt:
 fmt-check:
     cargo fmt --all --check
 
+# The shell is excluded here and covered by `just app`; it drags in a system
+# webview and turns a seconds-long check into a minutes-long one.
 lint:
-    cargo clippy --workspace --all-targets -- -D warnings
+    cargo clippy --workspace --exclude easy-usfm-tauri --all-targets -- -D warnings
 
 test:
-    cargo test --workspace
+    cargo test --workspace --exclude easy-usfm-tauri
 
 # The engine has to compile for the target it actually ships on
 wasm:

@@ -1,0 +1,26 @@
+[package]
+name = "easy-usfm-tauri"
+version = "0.1.0"
+description = "Desktop shell: file access, atomic save, recovery, watching"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+# The library holds everything; main.rs is a four-line entry point. Tauri needs
+# this shape on mobile, and it also means the shell's logic -- the atomic save
+# ladder above all -- is reachable from integration tests without launching a
+# window.
+name = "easy_usfm_tauri_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+easy-usfm-core = { path = "../easy-usfm-core" }
+tauri = { version = "2", features = [] }
+serde.workspace = true
+serde_json.workspace = true

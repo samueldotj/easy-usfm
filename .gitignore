@@ -30,6 +30,8 @@ dist-ssr/
 # --- Tauri ---
 src-tauri/target/
 crates/*/target/
+# Generated permission schemas, rebuilt by tauri-build on every compile.
+crates/easy-usfm-tauri/gen/
 gen/
 
 # --- WASM build output ---

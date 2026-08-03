@@ -73,13 +73,18 @@ Document model    USJ
 ```text
 crates/
 ├── easy-usfm-core/   facade, incremental session, offsets, diagnostics, indexes
+├── easy-usfm-cli/    parse, diagnostics, usj, bench, check
 ├── easy-usfm-wasm/   wasm-bindgen surface, worker protocol
 └── easy-usfm-tauri/  file access, atomic save, recovery, watching
 src/                  Svelte frontend
-xtask/                development tasks — corpus fetch, select, verify
+xtask/                development tasks — corpus, markers, oracle
+fuzz/                 cargo-fuzz targets
 corpus/               test corpus: 200 committed files, pinned by hash
 docs/                 design documentation
 ```
+
+The shell lives in `crates/` rather than Tauri's default `src-tauri/`, so all
+Rust sits in one place and the workspace covers it.
 
 ---
 
