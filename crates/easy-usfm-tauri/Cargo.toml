@@ -36,3 +36,4 @@ windows-sys = { version = "0.61", features = [
 
 [dev-dependencies]
 tempfile = "3"
+easy-usfm-core = { path = "../easy-usfm-core" }
