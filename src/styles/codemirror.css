@@ -1,0 +1,115 @@
+/*
+ * The editor's appearance, as a static stylesheet.
+ *
+ * SECURITY §5 names this conflict and resolves it here rather than in Phase 3:
+ * CodeMirror themes are normally built with `EditorView.theme()`, which
+ * injects a `<style>` element at runtime and is blocked by `style-src 'self'`.
+ * A per-load nonce is impossible for a static build and `'unsafe-inline'` is
+ * too weak, so **the project uses no CodeMirror theming API at all**. Every
+ * rule below is ordinary CSS shipped in a file Vite extracts at build time.
+ *
+ * The cost of getting this wrong is not one stylesheet. It is retrofitting
+ * theming across the whole editor surface after highlighting, diagnostics,
+ * decorations, and the preview have all been written against the injecting
+ * API — which is why it is done before any of them exist.
+ *
+ * Colours come from the custom properties in app.css, so light and dark are
+ * one set of rules and the theme switch changes nothing here.
+ *
+ * # Why the selectors are doubled
+ *
+ * CodeMirror still injects its own *base* theme -- the structural CSS it needs
+ * to lay out at all -- and that lands in the document head after this file, so
+ * a single-class selector like `.cm-scroller` loses every tie. Its base theme
+ * sets `font-family: monospace` on the content, which silently undid
+ * UNICODE §7 and rendered complex scripts in exactly the font that turns them
+ * to tofu. Every rule here that the base theme also sets is written
+ * `.cm-editor .cm-scroller` so it wins on specificity rather than on order.
+ *
+ * That remaining injection is why `style-src` still carries `'unsafe-inline'`.
+ * Removing it means stopping the base theme injecting too, which is P1.12's
+ * item. What is settled here is the expensive half: none of *our* appearance
+ * goes through the injecting API, so there is no theme surface to retrofit.
+ */
+
+.cm-editor {
+  block-size: 100%;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.cm-editor.cm-focused {
+  /* The pane already shows focus; a second ring inside it is noise. */
+  outline: none;
+}
+
+.cm-editor .cm-scroller {
+  /* UNICODE §7 inverts the usual editor font choice. Monospace coverage is
+     poor to nonexistent for many of the scripts this project exists to serve,
+     and a monospace-first stack renders them as tofu or falls back
+     unpredictably per platform. Column alignment in the content area is
+     abandoned as a goal; it is unachievable for these scripts and not needed. */
+  font-family: var(--font-content);
+  line-height: var(--line-height);
+  overflow: auto;
+}
+
+.cm-editor .cm-content {
+  font-family: var(--font-content);
+  padding-block: 0.75rem;
+  caret-color: var(--text);
+}
+
+/* The one alignment that matters, and the only place monospace survives. */
+.cm-editor .cm-gutters {
+  font-family: var(--font-gutter);
+  font-size: 0.85em;
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  border-inline-end: 1px solid var(--border);
+  /* Line numbers are decoration; a screen reader reading them between every
+     line makes the document unusable. */
+  user-select: none;
+}
+
+.cm-editor .cm-lineNumbers .cm-gutterElement {
+  padding-inline: 0.6rem 0.4rem;
+}
+
+.cm-editor .cm-activeLine {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+
+.cm-editor .cm-activeLineGutter {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--text);
+}
+
+.cm-editor .cm-cursor,
+.cm-editor .cm-dropCursor {
+  border-inline-start: 2px solid var(--text);
+}
+
+.cm-selectionBackground,
+.cm-editor .cm-selectionBackground,
+.cm-editor ::selection {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+.cm-editor.cm-focused .cm-selectionBackground {
+  background: color-mix(in srgb, var(--accent) 34%, transparent);
+}
+
+.cm-selectionMatch {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+/* Marker tokens are bidi-isolated in their decoration (UNICODE §8). That is
+   rendering only -- it changes bidi resolution for the marker run without
+   inserting FSI/PDI characters, so the source bytes are untouched and byte
+   fidelity holds. Inserting real isolate characters would corrupt the file.
+   The token classes themselves arrive with P2.6. */
+.cm-usfm-marker {
+  unicode-bidi: isolate;
+  direction: ltr;
+}

@@ -35,8 +35,17 @@
   --accent: #2563eb;
 }
 
+/*
+ * Three themes, two mechanisms (PRODUCT §3).
+ *
+ * The media query is the system default; `data-theme` is an explicit choice
+ * and must beat it in both directions, which is why dark is written twice
+ * rather than as one `prefers-color-scheme` block. `theme.ts` sets the
+ * attribute only to a resolved value -- never to "system" -- so the media
+ * query governs exactly when the user has not overridden it.
+ */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --surface: #18181b;
     --surface-sunken: #101012;
     --text: #e4e4e7;
@@ -44,6 +53,24 @@
     --border: #3f3f46;
     --accent: #60a5fa;
   }
+}
+
+:root[data-theme="dark"] {
+  --surface: #18181b;
+  --surface-sunken: #101012;
+  --text: #e4e4e7;
+  --text-muted: #a1a1aa;
+  --border: #3f3f46;
+  --accent: #60a5fa;
+}
+
+:root[data-theme="light"] {
+  --surface: #ffffff;
+  --surface-sunken: #f4f4f5;
+  --text: #18181b;
+  --text-muted: #71717a;
+  --border: #d4d4d8;
+  --accent: #2563eb;
 }
 
 *,
