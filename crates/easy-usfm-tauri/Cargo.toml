@@ -24,3 +24,15 @@ easy-usfm-core = { path = "../easy-usfm-core" }
 tauri = { version = "2", features = [] }
 serde.workspace = true
 serde_json.workspace = true
+
+# ReplaceFileW, not MoveFileEx. FILE-FIDELITY §2: ReplaceFileW preserves the
+# destination's ACLs, attributes, creation time, object ID, and alternate data
+# streams; MoveFileEx discards them.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_Storage_FileSystem",
+] }
+
+[dev-dependencies]
+tempfile = "3"

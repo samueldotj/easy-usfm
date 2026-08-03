@@ -10,6 +10,9 @@
 //! ladder (P1.5–P1.7), fault injection (P1.8), the document lifecycle (P1.10),
 //! and recovery and watching (Phase 4).
 
+pub mod fs;
+pub mod save;
+
 /// The engine version, and the round trip that proves the two halves are
 /// talking.
 #[tauri::command]
