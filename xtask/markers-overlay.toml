@@ -1,0 +1,92 @@
+# Marker metadata the Paratext stylesheet does not carry.
+#
+# Deprecations, replacements, and attribute lists live in the specification's
+# prose rather than in its machine-readable form, so they are asserted here by
+# hand and merged into markers.toml by `cargo xtask markers generate`.
+#
+# Kept deliberately small. Everything that can be derived from the stylesheet
+# is derived, so that the boundary between "generated from the specification"
+# and "someone typed this" stays visible in one file rather than being spread
+# through a generated table nobody reads.
+#
+# `since` is only stated here when the two stylesheets cannot settle it and the
+# specification does. Guessing would produce version warnings we cannot defend.
+
+# ---------------------------------------------------------- deprecated ---
+#
+# The three the specification deprecates and ARCHITECTURE §6 names.
+
+[marker.ph]
+deprecated_in = "3.0"
+replacement = "pi#"
+
+[marker.ph1]
+deprecated_in = "3.0"
+replacement = "pi1"
+
+[marker.ph2]
+deprecated_in = "3.0"
+replacement = "pi2"
+
+[marker.ph3]
+deprecated_in = "3.0"
+replacement = "pi3"
+
+[marker.addpn]
+deprecated_in = "3.0"
+replacement = "add"
+
+[marker.pro]
+deprecated_in = "3.0"
+replacement = "rb"
+
+# ---------------------------------------------------------- attributes ---
+#
+# USFM 3.0 introduced `|` attributes. Only markers with attributes of their own
+# are listed; the link attributes are valid on any character marker and are
+# handled as a rule rather than repeated 200 times.
+
+[marker.w]
+since = "3.0"
+attributes = ["lemma", "strong", "srcloc"]
+default_attr = "lemma"
+
+[marker.rb]
+since = "3.0"
+attributes = ["gloss"]
+default_attr = "gloss"
+
+[marker.fig]
+attributes = ["alt", "src", "size", "loc", "copy", "ref"]
+# No default_attr. The specification's prose does not settle which attribute a
+# bare `\fig caption|value\fig*` assigns to, and the parser's own answer (src)
+# is how it silently absorbs the deprecated 2.x positional form. Asserting one
+# here would bake that behaviour into our table; USFM-W041 reports the
+# construct instead.
+
+[marker.jmp]
+since = "3.0"
+attributes = ["link-href", "link-title", "link-id"]
+default_attr = "link-href"
+
+[marker.ref]
+since = "3.0"
+attributes = ["loc"]
+default_attr = "loc"
+
+[marker.qt-s]
+attributes = ["sid", "who"]
+default_attr = "who"
+
+[marker.qt-e]
+attributes = ["eid"]
+
+[marker.ts-s]
+attributes = ["sid"]
+
+[marker.ts-e]
+attributes = ["eid"]
+
+[marker.periph]
+attributes = ["id"]
+default_attr = "id"

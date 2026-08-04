@@ -1,0 +1,91 @@
+name: desktop
+
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # The frontend is platform-independent, so type-checking it three times would
+  # buy nothing. Split out so a TypeScript error reports as a TypeScript error
+  # rather than as one platform's shell build failing.
+  frontend:
+    name: frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Type-check
+        run: npm run check
+      - name: Test
+        run: npm test
+      - name: Build
+        run: npm run build
+
+  # The matrix P1.1 exists for. The shell is the one part of the project that
+  # is genuinely different per platform -- three webview engines, three
+  # filesystems, and from P1.5 three different ways to replace a file
+  # atomically -- so it is the part that has to be built on all three from the
+  # start rather than discovered to be broken at P1.6.
+  shell:
+    name: shell (${{ matrix.name }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows
+            runner: windows-latest
+          - name: macos
+            runner: macos-latest
+          - name: linux
+            runner: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Tauri renders through the system webview. Windows has WebView2 and
+      # macOS has WKWebView; Linux needs webkit2gtk installed, and the 4.1
+      # series is what Tauri 2 links against.
+      - name: Linux system dependencies
+        if: matrix.name == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # One cache per platform; sharing would thrash on every push.
+          key: ${{ matrix.name }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+
+      - name: Build the frontend
+        run: npm run build
+
+      - name: Lint the shell
+        run: cargo clippy --package easy-usfm-tauri --all-targets -- -D warnings
+
+      - name: Build the shell
+        run: cargo build --package easy-usfm-tauri
+
+      - name: Test the shell
+        run: cargo test --package easy-usfm-tauri

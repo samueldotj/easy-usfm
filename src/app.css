@@ -1,0 +1,106 @@
+/*
+ * Base styles.
+ *
+ * Two rules apply from the first commit rather than being retrofitted, because
+ * both cost nothing now and are expensive later (ROADMAP Part 2):
+ *
+ * 1. Logical properties only -- `margin-inline-start`, never `margin-left`.
+ *    UNICODE §8: this is the single factor deciding whether adding
+ *    right-to-left interface mirroring later costs a week or a month, since
+ *    retrofitting means auditing every stylesheet written in the interim.
+ *    Lint-enforced at P1.12.
+ *
+ * 2. Light and dark from the start, driven by the system.
+ */
+
+:root {
+  /* Content is proportional and script-appropriate; only the gutter is
+     monospace. UNICODE §7 inverts the usual editor font choice because
+     monospace coverage is poor to nonexistent for many complex scripts, and a
+     monospace-first stack renders them as tofu. */
+  --font-content:
+    "Noto Sans", "Noto Sans Devanagari", "Noto Sans Tamil", "Noto Sans Hebrew",
+    "Noto Sans Arabic", "Noto Sans Bengali", "Noto Sans Thai", "Noto Sans Khmer",
+    "Noto Sans Myanmar", system-ui, sans-serif;
+  --font-gutter: "Cascadia Mono", "SF Mono", "DejaVu Sans Mono", monospace;
+
+  /* 1.5 for Latin; 1.7 where marks sit above and below the baseline. */
+  --line-height: 1.5;
+
+  --surface: #ffffff;
+  --surface-sunken: #f4f4f5;
+  --text: #18181b;
+  --text-muted: #71717a;
+  --border: #d4d4d8;
+  --accent: #2563eb;
+}
+
+/*
+ * Three themes, two mechanisms (PRODUCT §3).
+ *
+ * The media query is the system default; `data-theme` is an explicit choice
+ * and must beat it in both directions, which is why dark is written twice
+ * rather than as one `prefers-color-scheme` block. `theme.ts` sets the
+ * attribute only to a resolved value -- never to "system" -- so the media
+ * query governs exactly when the user has not overridden it.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --surface: #18181b;
+    --surface-sunken: #101012;
+    --text: #e4e4e7;
+    --text-muted: #a1a1aa;
+    --border: #3f3f46;
+    --accent: #60a5fa;
+  }
+}
+
+:root[data-theme="dark"] {
+  --surface: #18181b;
+  --surface-sunken: #101012;
+  --text: #e4e4e7;
+  --text-muted: #a1a1aa;
+  --border: #3f3f46;
+  --accent: #60a5fa;
+}
+
+:root[data-theme="light"] {
+  --surface: #ffffff;
+  --surface-sunken: #f4f4f5;
+  --text: #18181b;
+  --text-muted: #71717a;
+  --border: #d4d4d8;
+  --accent: #2563eb;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  block-size: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-content);
+  line-height: var(--line-height);
+  color: var(--text);
+  background: var(--surface);
+
+  /* The document's direction is set explicitly rather than inherited
+     (UNICODE §8); the interface itself is left-to-right for v1.0. */
+  direction: ltr;
+}
+
+#app {
+  block-size: 100%;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

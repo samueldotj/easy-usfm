@@ -1,0 +1,107 @@
+# easy-usfm task runner — https://github.com/casey/just
+#
+# just is optional. Every recipe below is a single command you can run
+# directly; the equivalents are listed in corpus/README.md.
+#
+#   Install:  winget install Casey.Just     (Windows)
+#             brew install just             (macOS)
+#             cargo install just            (anywhere with Rust)
+
+# Recipes are single commands, so they work under PowerShell without needing
+# a POSIX shell on Windows.
+set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
+
+default:
+    @just --list
+
+# ---------------------------------------------------------------- corpus ---
+#
+# The corpus tooling is `cargo xtask`, so it needs no interpreter beyond the
+# Rust toolchain the project already requires. The .cargo alias makes it work
+# from a bare checkout with nothing else installed.
+
+# Download the extended tier: eBible.org plus the curated repositories
+corpus-fetch *ARGS:
+    cargo xtask corpus fetch {{ARGS}}
+
+# List redistributable sources without downloading anything
+corpus-list:
+    cargo xtask corpus fetch --list
+
+# Choose the committed core tier from the fetched extended tier
+corpus-select target="200":
+    cargo xtask corpus select --target {{target}}
+
+# Verify the committed corpus: hashes, provenance, coverage. Runs in CI.
+corpus-verify:
+    cargo xtask corpus verify
+
+# Report scripts, features, and encoding traits per file
+corpus-classify path="corpus/core":
+    cargo xtask corpus classify {{path}}
+
+# Summarise coverage and list anything missing
+corpus-coverage path="corpus/core":
+    cargo xtask corpus classify {{path}} --coverage
+
+# Self-test the corpus tooling (no network)
+corpus-test:
+    cargo test --package xtask
+
+# Rebuild the corpus from scratch: fetch, select, verify
+corpus-rebuild: corpus-fetch corpus-select corpus-verify
+
+# ---------------------------------------------------------------- engine ---
+
+# Everything the engine CI runs, in the order it runs it
+check: fmt-check lint test wasm
+
+# ---------------------------------------------------------------- desktop ---
+
+# Run the desktop shell against the dev server
+dev:
+    npm run tauri:dev
+
+# Build the installable bundle
+app:
+    npm run tauri:build
+
+# Type-check the frontend
+tsc:
+    npm run check
+
+fmt:
+    cargo fmt --all
+
+fmt-check:
+    cargo fmt --all --check
+
+# The shell is excluded here and covered by `just app`; it drags in a system
+# webview and turns a seconds-long check into a minutes-long one.
+lint:
+    cargo clippy --workspace --exclude easy-usfm-tauri --all-targets -- -D warnings
+
+test:
+    cargo test --workspace --exclude easy-usfm-tauri
+
+# The engine has to compile for the target it actually ships on
+wasm:
+    cargo build --package easy-usfm-core --target wasm32-unknown-unknown
+
+# ------------------------------------------------------------------ cli ---
+
+# Parse, diagnostics, usj, bench, check — see crates/easy-usfm-cli
+usfm *ARGS:
+    cargo run --release --package easy-usfm-cli -- {{ARGS}}
+
+# Parse throughput against the ARCHITECTURE §11 budget
+bench path="corpus/core":
+    cargo run --release --package easy-usfm-cli -- bench {{path}}
+
+# Diff the corpus across the implementations
+oracle *ARGS:
+    cargo xtask oracle {{ARGS}}
+
+# Fuzz the parser. Needs nightly and `cargo install cargo-fuzz`.
+fuzz target="parse" seconds="60":
+    cd fuzz && cargo +nightly fuzz run {{target}} -- -max_total_time={{seconds}}

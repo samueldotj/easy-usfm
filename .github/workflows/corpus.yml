@@ -1,0 +1,37 @@
+name: corpus
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tooling:
+    name: corpus tooling self-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Self-test (no network)
+        run: cargo test --package xtask
+
+  verify:
+    name: verify committed corpus
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      # Hashes, provenance, and the redistribution flag on all 200 files.
+      #
+      # Coverage is skipped, and the reason is not that it is inconvenient:
+      # six goals have no candidate in anything published. Three are feature
+      # classes rare outside alignment-bearing texts -- milestones, sidebars,
+      # custom \z markers. Three are encoding traits -- BOM, CRLF, mixed line
+      # endings -- that published Scripture never carries, because
+      # distributors normalise them away. Those three are what FILE-FIDELITY
+      # exists to protect, so they need synthesised files rather than a wider
+      # net. See corpus/README.md; tracked as part of finishing P0.1.
+      - name: Verify hashes, provenance, and licence terms
+        run: cargo xtask corpus verify --skip-coverage

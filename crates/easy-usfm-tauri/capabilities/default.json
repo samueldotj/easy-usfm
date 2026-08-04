@@ -1,0 +1,17 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "What the main window is permitted to do.",
+  "windows": ["main"],
+  "permissions": ["core:default", "dialog:allow-open", "dialog:allow-save", "dialog:allow-ask"],
+  "comment": [
+    "SECURITY: capabilities are granted as they become necessary, never in",
+    "advance. `core:default` is the minimum a window needs to exist.",
+    "",
+    "The dialog permissions let the window ask the user to pick a file. Note",
+    "what is *not* here: no fs: permission of any kind. Reading and writing go",
+    "through this crate's own commands, so the webview can only touch a path a",
+    "person chose in a native picker -- never a directory, never a glob, and",
+    "never a path the page composed for itself."
+  ]
+}

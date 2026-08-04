@@ -1,0 +1,82 @@
+name: rust
+
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+
+      # UNICODE §9.1 property 4 compares our grapheme segmentation against a
+      # real ICU implementation, because a Rust model of Intl.Segmenter would
+      # only assert that we can copy our own assumptions. The test skips when
+      # node is absent, so without this step it would pass without checking
+      # anything.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      # The desktop shell is excluded and built by `desktop.yml` instead. It
+      # pulls in a system webview -- and on Linux, half of GTK -- which would
+      # turn an engine job that runs in seconds into one that runs in minutes,
+      # for no benefit: ARCHITECTURE §3 keeps `easy-usfm-core` standalone
+      # precisely so this job can stay fast and platform-independent.
+      - name: Clippy
+        run: cargo clippy --workspace --exclude easy-usfm-tauri --all-targets
+
+      - name: Test
+        run: cargo test --workspace --exclude easy-usfm-tauri
+
+      # The performance budgets are compiled out of debug builds. A debug build
+      # is roughly an order of magnitude slower, so asserting 15 ms there would
+      # fail on a correct implementation and train everyone to ignore it.
+      - name: Performance budgets
+        run: cargo test --package easy-usfm-core --release --test session -- --nocapture
+
+      # The fuzz invariants, run deterministically over real files. The fuzzer
+      # itself needs nightly and hours; this is the same assertions on every
+      # push, so a regression does not wait for the next fuzzing session.
+      - name: Engine invariants over the corpus
+        run: cargo run --release --package easy-usfm-cli -- check corpus/core
+
+      # ARCHITECTURE §11: 2 MB parses in under 400 ms native.
+      - name: Parse throughput
+        run: cargo run --release --package easy-usfm-cli -- bench corpus/core --budget-ms 400
+
+      # Ours versus usfm3 as normalized USJ. usfm-grammar is the opt-in third
+      # leg and is not run here; see ARCHITECTURE §12.1.
+      - name: Differential oracle
+        run: cargo xtask oracle
+
+  wasm:
+    name: wasm32 build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+
+      # There is one engine on every target and it runs in a worker (ADR-002),
+      # so the core crate compiling to wasm is not an optional extra -- it is
+      # the only way the product runs at all. Checked separately from the host
+      # build because the failure it catches is a host-only dependency creeping
+      # in, which a host build cannot see.
+      - name: Build the engine for wasm32
+        run: cargo build --package easy-usfm-core --target wasm32-unknown-unknown
