@@ -1,21 +1,31 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onDestroy, onMount } from "svelte";
 
   import Editor from "./components/Editor.svelte";
   import SplitPane from "./components/SplitPane.svelte";
   import Toolbar from "./components/Toolbar.svelte";
   import { doc } from "./lib/document.svelte";
+  import { engine } from "./lib/engine.svelte";
   import { isDesktop } from "./lib/shell";
 
   let editor: Editor | undefined = $state();
   let error = $state<string | null>(null);
 
   const lines = $derived(doc.text.split("\n").length);
+  const counts = $derived(engine.counts);
 
   onMount(async () => {
+    engine.start();
     await run(() => doc.createNew());
+    // The editor was constructed before the document existed, so it is given
+    // the text explicitly rather than relying on the prop it was mounted with.
+    editor?.load(doc.text);
+    engine.open(doc.text);
     if (isDesktop()) await guardTheWindow();
   });
+
+  // Separate from onMount, which cannot return a cleanup when it is async.
+  onDestroy(() => engine.stop());
 
   $effect(() => {
     document.title = doc.title;
@@ -35,6 +45,9 @@
     if (!(await doc.confirmDiscard())) return;
     await run(action);
     editor?.load(doc.text);
+    // A new document is not an edit to the old one; the engine gets the whole
+    // text rather than a delta it could not make sense of.
+    engine.open(doc.text);
   }
 
   /**
@@ -100,13 +113,35 @@
         <Editor
           bind:this={editor}
           value={doc.text}
-          onchange={(text, changes) => doc.edited(text, changes)}
+          onchange={(text, changes) => {
+            doc.edited(text, changes);
+            engine.edit(
+              changes.map((change) => ({
+                from: change.fromA,
+                to: change.toA,
+                insert: change.inserted,
+              })),
+              text,
+            );
+          }}
         />
       {/snippet}
 
       {#snippet end()}
         <div class="placeholder">
-          <p>The preview arrives with M3.</p>
+          {#if engine.diagnostics.length === 0}
+            <p>No diagnostics.</p>
+          {:else}
+            <ul class="diagnostics">
+              {#each engine.diagnostics.slice(0, 50) as diagnostic (diagnostic.code + diagnostic.start)}
+                <li class={diagnostic.severity}>
+                  <code>{diagnostic.code}</code>
+                  {diagnostic.message}
+                </li>
+              {/each}
+            </ul>
+          {/if}
+          <p class="hint">The formatted preview arrives with M3.</p>
         </div>
       {/snippet}
     </SplitPane>
@@ -123,6 +158,12 @@
       {#if doc.summary.bom}<span>BOM</span>{/if}
     {/if}
     <div class="spacer"></div>
+    {#if engine.desynced}
+      <span class="warn" title={engine.desynced}>Engine resyncing</span>
+    {:else if engine.diagnostics.length > 0}
+      <span>{counts.error} errors, {counts.warning} warnings</span>
+    {/if}
+    <span>{engine.version ? `Engine ${engine.version}` : "Engine loading…"}</span>
     {#if doc.saveNote}<span class="note">Saved via {doc.saveNote}</span>{/if}
     <span>{doc.dirty ? "Unsaved changes" : "Saved"}</span>
   </footer>
@@ -172,10 +213,46 @@
 
   .placeholder {
     display: flex;
-    align-items: center;
-    justify-content: center;
+    flex-direction: column;
     block-size: 100%;
+    overflow: auto;
+    padding: 1rem;
     color: var(--text-muted);
     font-size: 0.875rem;
+  }
+
+  .warn {
+    color: #d97706;
+  }
+
+  .diagnostics {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .diagnostics li {
+    padding-block: 0.3rem;
+    border-block-end: 1px solid var(--border);
+  }
+
+  .diagnostics code {
+    font-family: var(--font-gutter);
+    font-size: 0.8em;
+    margin-inline-end: 0.5rem;
+  }
+
+  .diagnostics .error code {
+    color: #dc2626;
+  }
+
+  .diagnostics .warning code {
+    color: #d97706;
+  }
+
+  .hint {
+    margin-block-start: auto;
+    padding-block-start: 1rem;
+    font-size: 0.8125rem;
   }
 </style>

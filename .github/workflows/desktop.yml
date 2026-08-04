@@ -21,6 +21,18 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
+
+      # The frontend imports the engine's WASM, so it has to exist before
+      # anything type-checks. It is generated rather than committed, which is
+      # what stops it drifting from the Rust it is built from.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: jetli/wasm-pack-action@v0.4.0
+      - name: Build the engine for the worker
+        run: npm run wasm
+
       - name: Type-check
         run: npm run check
       - name: Test
@@ -67,6 +79,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
+          targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
         with:
           # One cache per platform; sharing would thrash on every push.
@@ -77,6 +90,7 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
+      - uses: jetli/wasm-pack-action@v0.4.0
 
       - name: Build the frontend
         run: npm run build

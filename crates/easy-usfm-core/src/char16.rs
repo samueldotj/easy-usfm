@@ -32,6 +32,22 @@ impl Char16 {
     pub const fn get(self) -> u32 {
         self.0
     }
+
+    /// An offset that arrived **from** the editor.
+    ///
+    /// The sealed constructor exists to stop a byte offset masquerading as a
+    /// Char16 one — the failure that is invisible on ASCII and wrong
+    /// everywhere else. It does not exist to stop offsets entering from
+    /// outside, and there is one place they legitimately do: CodeMirror and
+    /// DOM ranges already count in UTF-16 code units, so a position reported
+    /// by the editor *is* a Char16 and only needs carrying.
+    ///
+    /// Named so the distinction is visible at every call site. If this ever
+    /// appears somewhere that is not translating an editor position, that is
+    /// the bug — a plain `From<u32>` would have made it unfindable.
+    pub const fn from_editor(offset: u32) -> Self {
+        Self(offset)
+    }
 }
 
 impl std::fmt::Display for Char16 {

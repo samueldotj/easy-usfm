@@ -1,0 +1,42 @@
+[package]
+name = "easy-usfm-wasm"
+version = "0.1.0"
+description = "The USFM engine, compiled for the worker it runs in on every target"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+# wasm-pack ships a wasm-opt older than the WebAssembly features rustc now
+# emits by default, so it rejects its own input with "Bulk memory operations
+# require bulk memory". The features are named explicitly rather than turning
+# the optimiser off -- it is worth roughly a third of the artifact size, and
+# this crate is downloaded on every cold page load in the browser build.
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = [
+  "-O3",
+  "--enable-bulk-memory",
+  "--enable-nontrapping-float-to-int",
+  "--enable-mutable-globals",
+  "--enable-sign-ext",
+  "--enable-reference-types",
+]
+
+[dependencies]
+easy-usfm-core = { path = "../easy-usfm-core" }
+wasm-bindgen = "0.2"
+serde.workspace = true
+serde_json.workspace = true
+serde-wasm-bindgen = "0.6"
+
+# Panics reach the console as a readable message rather than
+# "unreachable executed". ARCHITECTURE §12.3 says the parser never panics and
+# the fuzz target holds it to that -- this is for the day it does anyway.
+console_error_panic_hook = "0.1"
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"

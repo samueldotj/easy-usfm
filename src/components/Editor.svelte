@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { EditorState } from "@codemirror/state";
+  import { Annotation, EditorState } from "@codemirror/state";
   import { EditorView, keymap, lineNumbers, highlightActiveLine, drawSelection } from "@codemirror/view";
   import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
   import { onMount } from "svelte";
@@ -14,6 +14,16 @@
   }
 
   let { value = "", direction = "ltr", onchange }: Props = $props();
+
+  /**
+   * Marks a change as coming from outside the editor.
+   *
+   * Opening a file replaces the whole document, and CodeMirror reports that
+   * as a transaction like any other. Without this the act of opening marks the
+   * document unsaved, so every freshly opened file claims to have changes —
+   * and the close warning fires on a document nobody touched.
+   */
+  const External = Annotation.define<boolean>();
 
   let host: HTMLDivElement;
   let view: EditorView | undefined;
@@ -50,7 +60,8 @@
             // The changes go with the text, because the per-line terminator
             // array can only be remapped by something that knows how the
             // transaction moved the lines (P1.4).
-            if (update.docChanged) {
+            const external = update.transactions.some((tr) => tr.annotation(External));
+            if (update.docChanged && !external) {
               onchange?.(update.state.doc.toString(), changesOf(update.changes));
             }
           }),
@@ -76,7 +87,7 @@
     if (!view) return;
     view.dispatch({
       changes: { from: 0, to: view.state.doc.length, insert: text },
-      annotations: [],
+      annotations: External.of(true),
     });
   }
 </script>
