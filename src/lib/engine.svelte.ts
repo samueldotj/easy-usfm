@@ -14,7 +14,43 @@ export type { Diagnostic } from "../worker/protocol";
 /** How long typing must stop before the mirror is verified. */
 const IDLE_MS = 400;
 
-class Engine {
+/**
+ * The part of `Worker` this uses.
+ *
+ * Narrow on purpose: a fake in a test implements three members rather than
+ * pretending to be a browser primitive.
+ */
+export interface WorkerLike {
+  postMessage(message: unknown): void;
+  terminate(): void;
+  onmessage: ((event: { data: Response }) => void) | null;
+}
+
+/**
+ * The real worker, behind {@link WorkerLike}.
+ *
+ * Adapted rather than assigned: `Worker.onmessage` takes a full `MessageEvent`,
+ * which is wider than this needs, and a wider parameter type is not assignable
+ * to a narrower one. Narrowing it here is honest about the one field that is
+ * actually read, and keeps the fake in the tests from having to impersonate a
+ * browser primitive.
+ */
+function adapt(): WorkerLike {
+  const worker = new Worker(new URL("../worker/engine.worker.ts", import.meta.url), {
+    type: "module",
+    name: "easy-usfm-engine",
+  });
+
+  const like: WorkerLike = {
+    postMessage: (message) => worker.postMessage(message),
+    terminate: () => worker.terminate(),
+    onmessage: null,
+  };
+  worker.onmessage = (event: MessageEvent<Response>) => like.onmessage?.({ data: event.data });
+  return like;
+}
+
+export class Engine {
   /** The engine's version, once the worker has answered. */
   version = $state<string | null>(null);
   ready = $state(false);
@@ -28,7 +64,7 @@ class Engine {
    */
   desynced = $state<string | null>(null);
 
-  #worker: Worker | null = null;
+  #worker: WorkerLike | null = null;
   #rev = 0;
   #applied = 0;
   /** The last text sent, so a desync can be repaired without asking anyone. */
@@ -36,15 +72,20 @@ class Engine {
   #buffer = new DeltaBuffer();
   #idleTimer: ReturnType<typeof setTimeout> | null = null;
 
-  start(): void {
+  /**
+   * Connects to the engine.
+   *
+   * `factory` exists so the protocol can be tested without a browser: the
+   * behaviour worth testing here — discarding stale results, repairing a
+   * desync — is all in how replies are handled, and none of it should require
+   * spawning a real worker to exercise.
+   */
+  start(factory?: () => WorkerLike): void {
     if (this.#worker) return;
 
-    this.#worker = new Worker(new URL("../worker/engine.worker.ts", import.meta.url), {
-      type: "module",
-      name: "easy-usfm-engine",
-    });
-
-    this.#worker.onmessage = (event: MessageEvent<Response>) => this.#receive(event.data);
+    const worker = factory?.() ?? adapt();
+    this.#worker = worker;
+    worker.onmessage = (event) => this.#receive(event.data);
     // Nothing is asked of the engine until it says it is ready. The WASM
     // module is fetched and instantiated asynchronously, so a request sent at
     // construction reaches a worker whose exports do not exist yet — it throws,
