@@ -78,6 +78,17 @@ self.onmessage = (event: MessageEvent<Request>) => {
           result = session.edit(edit.from, edit.to, edit.insert) as ParseResult;
         }
 
+        // Verified *after* applying, against the text the editor had when it
+        // sent the batch. A mismatch means the two sides no longer hold the
+        // same document, and every offset in the reply would be wrong.
+        if (request.checksum !== undefined && session.checksum !== request.checksum) {
+          desync(
+            request.rev,
+            `mirror checksum ${session.checksum} does not match the editor's ${request.checksum}`,
+          );
+          return;
+        }
+
         reply({
           kind: "parsed",
           rev: request.rev,

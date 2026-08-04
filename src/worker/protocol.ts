@@ -45,7 +45,12 @@ export interface Edit {
 
 export type Request =
   | { kind: "open"; rev: number; text: string }
-  | { kind: "edit"; rev: number; edits: Edit[] }
+  /**
+   * A batch. `checksum` rides along every 50 batches and at each idle
+   * boundary; when present the worker compares it against its own mirror and
+   * reports a desync rather than carrying on.
+   */
+  | { kind: "edit"; rev: number; edits: Edit[]; checksum?: number }
   /** The full document again, after a desync or an external reload. */
   | { kind: "resync"; rev: number; text: string }
   | { kind: "version"; rev: number };

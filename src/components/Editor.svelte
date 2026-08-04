@@ -11,9 +11,19 @@
     /** Document direction. UNICODE §8 — explicit, never inherited. */
     direction?: "ltr" | "rtl";
     onchange?: (value: string, changes: Change[]) => void;
+    /** An input method has begun assembling a word. */
+    oncompositionstart?: () => void;
+    /** It has committed. UNICODE §5 — everything held goes as one batch. */
+    oncompositionend?: (value: string) => void;
   }
 
-  let { value = "", direction = "ltr", onchange }: Props = $props();
+  let {
+    value = "",
+    direction = "ltr",
+    onchange,
+    oncompositionstart,
+    oncompositionend,
+  }: Props = $props();
 
   /**
    * Marks a change as coming from outside the editor.
@@ -69,7 +79,23 @@
       }),
     });
 
-    return () => view?.destroy();
+    // Listened for on the DOM rather than inferred from transactions, because
+    // the composition is a property of the input method and not of the
+    // document. CodeMirror's own `composing` flag is derived from these same
+    // events; using them directly keeps the suppression independent of the
+    // editor's internals (UNICODE §5).
+    const dom = view.contentDOM;
+    const started = () => oncompositionstart?.();
+    const ended = () => oncompositionend?.(view!.state.doc.toString());
+
+    dom.addEventListener("compositionstart", started);
+    dom.addEventListener("compositionend", ended);
+
+    return () => {
+      dom.removeEventListener("compositionstart", started);
+      dom.removeEventListener("compositionend", ended);
+      view?.destroy();
+    };
   });
 
   /** Focus the editor. Used by F6 pane cycling. */

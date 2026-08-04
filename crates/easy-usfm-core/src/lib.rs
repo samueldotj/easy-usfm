@@ -62,3 +62,6 @@ pub use span::ByteSpan;
 pub use usj::to_usj;
 pub use verse::{VerseEntry, VerseId, VerseIndex};
 pub use version::Version;
+
+mod checksum;
+pub use checksum::checksum;

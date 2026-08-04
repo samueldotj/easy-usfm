@@ -124,6 +124,8 @@
               text,
             );
           }}
+          oncompositionstart={() => engine.startComposition()}
+          oncompositionend={(text) => engine.endComposition(text)}
         />
       {/snippet}
 

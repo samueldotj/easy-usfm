@@ -6,9 +6,13 @@
  * offsets would light up diagnostics on text that has since been retyped.
  */
 
+import { DeltaBuffer, type Batch } from "./delta";
 import type { Diagnostic, Edit, ParseResult, Request, Response } from "../worker/protocol";
 
 export type { Diagnostic } from "../worker/protocol";
+
+/** How long typing must stop before the mirror is verified. */
+const IDLE_MS = 400;
 
 class Engine {
   /** The engine's version, once the worker has answered. */
@@ -29,6 +33,8 @@ class Engine {
   #applied = 0;
   /** The last text sent, so a desync can be repaired without asking anyone. */
   #text = "";
+  #buffer = new DeltaBuffer();
+  #idleTimer: ReturnType<typeof setTimeout> | null = null;
 
   start(): void {
     if (this.#worker) return;
@@ -46,6 +52,8 @@ class Engine {
   }
 
   stop(): void {
+    if (this.#idleTimer !== null) clearTimeout(this.#idleTimer);
+    this.#idleTimer = null;
     this.#worker?.terminate();
     this.#worker = null;
     this.ready = false;
@@ -68,7 +76,49 @@ class Engine {
       this.#resync();
       return;
     }
-    this.#send({ kind: "edit", rev: this.#next(), edits });
+
+    const batch = this.#buffer.push(edits, text);
+    if (batch) this.#dispatch(batch);
+    this.#scheduleIdle();
+  }
+
+  /** An input method has started. Nothing goes over until it commits. */
+  startComposition(): void {
+    this.#buffer.startComposition();
+  }
+
+  /** An input method has committed. One batch for the whole word. */
+  endComposition(text: string): void {
+    this.#text = text;
+    const batch = this.#buffer.endComposition(text);
+    if (batch) this.#dispatch(batch);
+    this.#scheduleIdle();
+  }
+
+  #dispatch(batch: Batch): void {
+    this.#send({
+      kind: "edit",
+      rev: this.#next(),
+      edits: batch.edits,
+      checksum: batch.checksum,
+    });
+  }
+
+  /**
+   * Verifies the mirror once typing stops.
+   *
+   * The cheap moment to check: nothing is competing for the main thread, and
+   * drift caught here is caught before the next keystroke builds on it.
+   */
+  #scheduleIdle(): void {
+    if (this.#idleTimer !== null) clearTimeout(this.#idleTimer);
+    this.#idleTimer = setTimeout(() => {
+      this.#idleTimer = null;
+      if (this.#buffer.composing) return;
+
+      const batch = this.#buffer.idle(this.#text);
+      if (batch) this.#dispatch(batch);
+    }, IDLE_MS);
   }
 
   #resync(): void {

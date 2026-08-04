@@ -128,6 +128,16 @@ impl Session {
         self.inner.rev()
     }
 
+    /// The mirror's checksum, for comparison against the editor's.
+    ///
+    /// ARCHITECTURE §9: silent drift corrupts every offset in the interface,
+    /// and nothing about the display says so. This is the only way the two
+    /// sides find out they have stopped agreeing.
+    #[wasm_bindgen(getter)]
+    pub fn checksum(&self) -> u32 {
+        easy_usfm_core::checksum(self.inner.source())
+    }
+
     /// Applies one edit, in UTF-16 offsets against the document as this side
     /// currently holds it.
     ///
