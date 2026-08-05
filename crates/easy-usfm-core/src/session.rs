@@ -396,7 +396,8 @@ impl Session {
                     // Re-derived from the marker table below, with a version
                     // model the parser does not have.
                     .filter(|diagnostic| !severity::is_derived(diagnostic.code))
-                    .filter(|diagnostic| is_header || !is_document_scoped(diagnostic.code))
+                    .filter(|diagnostic| is_header || !is_header_scoped(diagnostic.code))
+                    .filter(|diagnostic| !is_cross_chunk(diagnostic.code))
                     // Anything the synthetic context provoked describes text
                     // the user did not write.
                     .filter(|diagnostic| diagnostic.span.end > offset || offset == 0)
@@ -554,6 +555,20 @@ impl Session {
             }
         }
 
+        // Asked of the chunk list, which is the only thing that knows. A `\c`
+        // is what starts a chunk, so "are there any chapters" is exactly "is
+        // there a chunk with a number" — and no individual chunk can see that.
+        if !self.chunks.iter().any(|chunk| chunk.number.is_some()) {
+            diagnostics.push(Diagnostic {
+                code: DiagnosticCode::MissingChapterMarker,
+                severity: crate::Severity::Error,
+                // Zero-width at the top of the file: the fault is the absence
+                // of something, so there is no text to point at.
+                span: ByteSpan::new(0, 0),
+                message: "this document has no \\c chapter marker".to_string(),
+            });
+        }
+
         diagnostics.extend(self.verses().diagnostics());
 
         // USFM-I021. Reported once for the document rather than once per
@@ -677,17 +692,13 @@ fn line_end(text: &str, offset: usize) -> usize {
 
 // ------------------------------------------------------------ diagnostics ---
 
-/// Conditions that describe the document rather than a chapter.
+/// Conditions only the header chunk can answer.
 ///
 /// A chapter parsed on its own has no `\id`, so the parser reports one missing
 /// — correctly, for the text it was given, and uselessly, because the `\id` is
 /// in the header chunk. Suppressed everywhere but the header, where the
 /// question is real.
-///
-/// The sequencing codes are suppressed for a different reason: no chunk can
-/// see its neighbours, so any answer it gives is guesswork. They are Tier 3's
-/// to report.
-const fn is_document_scoped(code: DiagnosticCode) -> bool {
+const fn is_header_scoped(code: DiagnosticCode) -> bool {
     matches!(
         code,
         DiagnosticCode::MissingIdMarker
@@ -695,7 +706,25 @@ const fn is_document_scoped(code: DiagnosticCode) -> bool {
             | DiagnosticCode::TextBeforeId
             | DiagnosticCode::HeaderAfterBody
             | DiagnosticCode::BodyParagraphBeforeChapter
-            | DiagnosticCode::MissingChapterMarker
+    )
+}
+
+/// Conditions no chunk can answer, including the header.
+///
+/// These are about the *relationship* between chunks, so any answer a chunk
+/// gives from inside itself is guesswork. Tier 3 reports them
+/// (ARCHITECTURE §8.2).
+///
+/// `MissingChapterMarker` is the one that has to be listed here rather than
+/// above, and the reason is worth stating: the header chunk is *defined* as
+/// everything before the first `\c`, so it never contains one and the parser
+/// always reports it missing. Treating the header as the authority on this
+/// question puts a false Error on every well-formed document in the corpus —
+/// which is what it did until the diagnostics panel made it visible.
+const fn is_cross_chunk(code: DiagnosticCode) -> bool {
+    matches!(
+        code,
+        DiagnosticCode::MissingChapterMarker
             | DiagnosticCode::InvalidChapterSequence
             | DiagnosticCode::InvalidVerseSequence
             | DiagnosticCode::DuplicateChapter

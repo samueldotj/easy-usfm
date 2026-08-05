@@ -46,6 +46,10 @@ pub struct WireDiagnostic {
     /// UTF-16 code units, which is what CodeMirror and DOM ranges count in.
     pub start: u32,
     pub end: u32,
+    /// 1-based, for the panel to say where. Computed here because the mapper
+    /// is line-indexed already; the alternative is the interface walking the
+    /// document on every keystroke to recover it.
+    pub line: u32,
     pub message: String,
 }
 
@@ -265,6 +269,7 @@ impl Session {
                     },
                     start: range.start.get(),
                     end: range.end.get(),
+                    line: self.mapper.line(source, diagnostic.span.start).unwrap_or(1),
                     message: diagnostic.message,
                 }
             })

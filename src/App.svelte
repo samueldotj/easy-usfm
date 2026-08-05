@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
 
+  import DiagnosticsPanel from "./components/DiagnosticsPanel.svelte";
   import Editor from "./components/Editor.svelte";
   import SplitPane from "./components/SplitPane.svelte";
   import Toolbar from "./components/Toolbar.svelte";
@@ -11,9 +12,21 @@
 
   let editor: Editor | undefined = $state();
   let error = $state<string | null>(null);
+  let panelOpen = $state(true);
 
   const lines = $derived(doc.text.split("\n").length);
   const counts = $derived(engine.counts);
+
+  /**
+   * The editor is told about diagnostics as they arrive.
+   *
+   * Pushed here rather than passed as a prop because they are not the editor's
+   * state — they are a parse result that has to be *mapped onto* whatever the
+   * document has become since, which is something only the editor can do.
+   */
+  $effect(() => {
+    editor?.applyDiagnostics(engine.diagnostics);
+  });
 
   onMount(async () => {
     engine.ontokens = (from, to, tokens) => editor?.applyTokens(from, to, tokens);
@@ -71,6 +84,15 @@
           break;
         case "focus-editor":
           editor?.focus();
+          break;
+        case "toggle-diagnostics":
+          panelOpen = !panelOpen;
+          break;
+        case "next-diagnostic":
+          editor?.step(true);
+          break;
+        case "previous-diagnostic":
+          editor?.step(false);
           break;
       }
     });
@@ -135,7 +157,20 @@
       editor?.focus();
       return;
     }
+    if (event.key === "F8") {
+      event.preventDefault();
+      editor?.step(!event.shiftKey);
+      return;
+    }
     if (!accel) return;
+
+    // Ctrl+Shift+M. Checked on `code` rather than `key`, because with Shift
+    // held the key a layout reports is not reliably the letter on the cap.
+    if (event.shiftKey && event.code === "KeyM") {
+      event.preventDefault();
+      panelOpen = !panelOpen;
+      return;
+    }
 
     switch (event.key.toLowerCase()) {
       case "n":
@@ -192,23 +227,19 @@
 
       {#snippet end()}
         <div class="placeholder">
-          {#if engine.diagnostics.length === 0}
-            <p>No diagnostics.</p>
-          {:else}
-            <ul class="diagnostics">
-              {#each engine.diagnostics.slice(0, 50) as diagnostic (diagnostic.code + diagnostic.start)}
-                <li class={diagnostic.severity}>
-                  <code>{diagnostic.code}</code>
-                  {diagnostic.message}
-                </li>
-              {/each}
-            </ul>
-          {/if}
           <p class="hint">The formatted preview arrives with M3.</p>
         </div>
       {/snippet}
     </SplitPane>
   </main>
+
+  <DiagnosticsPanel
+    diagnostics={engine.diagnostics}
+    open={panelOpen}
+    ontoggle={() => (panelOpen = !panelOpen)}
+    onselect={(index, focus) => editor?.goTo(index, focus)}
+    onescape={() => editor?.focus()}
+  />
 
   <footer>
     <span>{lines} lines</span>
@@ -285,31 +316,6 @@
   }
 
   .warn {
-    color: #d97706;
-  }
-
-  .diagnostics {
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-
-  .diagnostics li {
-    padding-block: 0.3rem;
-    border-block-end: 1px solid var(--border);
-  }
-
-  .diagnostics code {
-    font-family: var(--font-gutter);
-    font-size: 0.8em;
-    margin-inline-end: 0.5rem;
-  }
-
-  .diagnostics .error code {
-    color: #dc2626;
-  }
-
-  .diagnostics .warning code {
     color: #d97706;
   }
 

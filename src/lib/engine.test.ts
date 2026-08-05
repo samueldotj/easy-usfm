@@ -100,6 +100,7 @@ class FakeWorker implements WorkerLike {
           severity: "information",
           start: 0,
           end: this.mirror.length,
+          line: 1,
           message: this.mirror,
         },
       ],

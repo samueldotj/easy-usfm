@@ -105,6 +105,26 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, recent: &[String]) -> tauri::Result
                 .accelerator("F6")
                 .build(app)?,
         )
+        .separator()
+        // The accelerators are declared here and only here. The interface's own
+        // key handler stands down on the desktop, so a shortcut shown beside a
+        // menu item is the one that runs -- and there is no second binding to
+        // fall out of step with what the menu claims (PRODUCT §6.4).
+        .item(
+            &MenuItemBuilder::with_id("toggle-diagnostics", "&Diagnostics")
+                .accelerator("CmdOrCtrl+Shift+M")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("next-diagnostic", "&Next Diagnostic")
+                .accelerator("F8")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("previous-diagnostic", "&Previous Diagnostic")
+                .accelerator("Shift+F8")
+                .build(app)?,
+        )
         .build()?;
 
     let help = SubmenuBuilder::new(app, "&Help")

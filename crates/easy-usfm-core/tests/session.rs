@@ -324,6 +324,50 @@ fn a_chapter_chunk_does_not_report_the_missing_book_identification() {
 }
 
 #[test]
+fn a_document_with_chapters_does_not_report_them_missing() {
+    // The header chunk is *defined* as everything before the first `\c`, so it
+    // never contains one and the parser always reports it missing there.
+    // Treating the header as the authority put a false Error on every
+    // well-formed document in the corpus, including this one.
+    let session = Session::new("\\id GEN\n\\c 1\n\\p\n\\v 1 hello\n");
+
+    assert_eq!(
+        session.diagnostics(),
+        vec![],
+        "a well-formed document reported a diagnostic"
+    );
+}
+
+#[test]
+fn a_document_with_no_chapters_still_reports_them_missing() {
+    // Suppressing it per chunk must not lose it. The question moved to Tier 3,
+    // where the chunk list is visible; it did not go away.
+    let session = Session::new("\\id GEN\n\\p\n\\v 1 no chapter anywhere\n");
+    let missing: Vec<_> = session
+        .diagnostics()
+        .into_iter()
+        .filter(|d| d.code == easy_usfm_core::DiagnosticCode::MissingChapterMarker)
+        .collect();
+
+    assert_eq!(missing.len(), 1, "expected exactly one, got {missing:?}");
+    assert_eq!(missing[0].span, ByteSpan::new(0, 0));
+}
+
+#[test]
+fn a_chapter_is_not_reported_missing_once_per_chapter() {
+    // The failure mode the per-chunk filter exists to prevent, in the other
+    // direction: five chapters must not mean five copies of anything.
+    let session = Session::new(book(5, 2));
+    let missing = session
+        .diagnostics()
+        .iter()
+        .filter(|d| d.code == easy_usfm_core::DiagnosticCode::MissingChapterMarker)
+        .count();
+
+    assert_eq!(missing, 0);
+}
+
+#[test]
 fn duplicate_chapters_are_caught_across_chunks() {
     // No chunk can see this on its own -- it is Tier 3's to report.
     let session = Session::new("\\id GEN\n\\c 1\n\\p\n\\v 1 a\n\\c 1\n\\p\n\\v 1 b\n");

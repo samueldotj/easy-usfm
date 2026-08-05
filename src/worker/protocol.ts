@@ -17,6 +17,8 @@ export interface Diagnostic {
   severity: "error" | "warning" | "information";
   start: number;
   end: number;
+  /** 1-based. Computed by the engine, whose mapper is line-indexed already. */
+  line: number;
   message: string;
 }
 

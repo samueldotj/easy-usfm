@@ -154,3 +154,68 @@
 .cm-editor .cm-usfm-attribute {
   color: var(--syntax-attribute);
 }
+
+/* -------------------------------------------------------- diagnostics ---
+ *
+ * An underline in the text and a glyph in the gutter, never hue alone
+ * (PRODUCT §10). Both, because either one alone fails somebody: the underline
+ * is invisible once the line has scrolled out of view, and the glyph does not
+ * say which characters are wrong.
+ *
+ * `text-decoration` rather than a border or a background. A background changes
+ * the run's metrics and a bottom border sits at a fixed distance from the box
+ * — both of which collide with the marks that hang below the baseline in Tamil
+ * and Devanagari. `text-decoration-skip-ink` then keeps the line off the
+ * descenders it would otherwise strike through.
+ */
+
+.cm-editor .cm-diagnostic-underline {
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-skip-ink: auto;
+  /* Fixed rather than proportional, so the wave stays a wave at 200 % zoom. */
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}
+
+.cm-editor .cm-diagnostic-error {
+  text-decoration-color: var(--severity-error);
+  color: inherit;
+}
+
+.cm-editor .cm-diagnostic-warning {
+  text-decoration-color: var(--severity-warning);
+}
+
+.cm-editor .cm-diagnostic-information {
+  text-decoration-color: var(--severity-information);
+}
+
+.cm-editor .cm-diagnostic-gutter {
+  background: var(--surface-sunken);
+  /* Wide enough for the glyph and no wider; the gutter competes with the text
+     for the reading width, which matters most in the scripts that need it. */
+  min-inline-size: 1.1rem;
+}
+
+.cm-editor .cm-diagnostic-gutter .cm-gutterElement {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7em;
+  /* The glyphs are geometric shapes, so they come from the gutter's own stack
+     rather than the content font -- which may not have them at all. */
+  font-family: var(--font-gutter);
+}
+
+.cm-editor .cm-diagnostic-glyph.cm-diagnostic-error {
+  color: var(--severity-error);
+}
+
+.cm-editor .cm-diagnostic-glyph.cm-diagnostic-warning {
+  color: var(--severity-warning);
+}
+
+.cm-editor .cm-diagnostic-glyph.cm-diagnostic-information {
+  color: var(--severity-information);
+}

@@ -4,9 +4,15 @@
   import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
   import { onMount } from "svelte";
 
+  import {
+    diagnostics,
+    revealDiagnostic,
+    setDiagnostics,
+    stepDiagnostic,
+  } from "../lib/diagnostics";
   import { changesOf, type Change } from "../lib/eol";
   import { highlighting, setTokens, tokenRequests } from "../lib/highlight";
-  import type { Token } from "../worker/protocol";
+  import type { Diagnostic, Token } from "../worker/protocol";
 
   interface Props {
     value?: string;
@@ -49,6 +55,9 @@
       state: EditorState.create({
         doc: value,
         extensions: [
+          // Before the line numbers, so the glyph column is on the outside and
+          // the numbers stay next to the text they count.
+          diagnostics,
           lineNumbers(),
           history(),
           drawSelection(),
@@ -116,6 +125,21 @@
   /** Applies highlighting that has come back from the engine. */
   export function applyTokens(from: number, to: number, tokens: Token[]): void {
     view?.dispatch({ effects: setTokens.of({ from, to, tokens }) });
+  }
+
+  /** Applies the diagnostics from a parse result. */
+  export function applyDiagnostics(list: Diagnostic[]): void {
+    view?.dispatch({ effects: setDiagnostics.of(list) });
+  }
+
+  /** F8 and Shift+F8 (PRODUCT §6.4). */
+  export function step(forward: boolean): void {
+    if (view) stepDiagnostic(forward)(view);
+  }
+
+  /** The panel asking to go to one of them. */
+  export function goTo(index: number, focus: boolean): void {
+    if (view) revealDiagnostic(view, index, focus);
   }
 
   /**
