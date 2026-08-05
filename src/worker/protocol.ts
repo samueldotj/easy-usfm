@@ -87,6 +87,8 @@ export type Request =
   | { kind: "resolve"; rev: number; text: string }
   /** What reference a cursor position is at, for the status bar. */
   | { kind: "where"; rev: number; at: number }
+  /** The marker list for a backslash at `at`. */
+  | { kind: "completions"; rev: number; at: number }
   /** The *engine's* version, which is a different question entirely. */
   | { kind: "version"; rev: number };
 
@@ -104,6 +106,22 @@ export interface Resolution {
   message: string | null;
 }
 
+/** One marker the editor may offer. Ranked by the engine, filtered by the editor. */
+export interface Completion {
+  marker: string;
+  class: "character" | "paragraph" | "note" | "milestone" | "unclassified";
+  /** Whether it makes sense where the cursor is. Ranking, not filtering. */
+  valid_here: boolean;
+  deprecated_in: string | null;
+  replacement: string | null;
+  uses: number;
+  /** The text to put after the backslash. */
+  insert: string;
+  /** Where the caret goes within `insert`, in UTF-16 units. */
+  caret: number;
+  detail: string;
+}
+
 /** One highlighted run. Carries a class, never a colour. */
 export interface Token {
   class: string;
@@ -118,6 +136,7 @@ export type Response =
   | { kind: "tokens"; rev: number; from: number; to: number; tokens: Token[] }
   | { kind: "resolved"; rev: number; result: Resolution }
   | { kind: "where"; rev: number; reference: string | null }
+  | { kind: "completions"; rev: number; completions: Completion[] }
   | { kind: "version"; rev: number; version: string }
   /**
    * The worker could not apply what it was sent and its mirror is no longer

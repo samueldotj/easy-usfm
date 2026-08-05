@@ -258,6 +258,7 @@
           oncompositionend={(text) => engine.endComposition(text)}
           ontokenrange={(from, to) => engine.requestTokens(from, to)}
           oncursor={(at) => engine.locate(at)}
+          oncomplete={(at) => engine.completions(at)}
         />
       {/snippet}
 

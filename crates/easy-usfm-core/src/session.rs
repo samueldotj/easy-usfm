@@ -628,6 +628,74 @@ impl Session {
         })
     }
 
+    /// The autocomplete context at a `\`, which is the offset of the backslash
+    /// itself rather than of the caret after it.
+    ///
+    /// Two facts, because they are the two USFM turns on: whether the marker
+    /// is line-initial, and what it would be nesting inside.
+    pub fn completion_context(&self, byte: usize) -> crate::CompletionContext {
+        let byte = byte.min(self.source.len());
+        let start = line_start(&self.source, byte);
+
+        crate::CompletionContext {
+            line_initial: self.source[start..byte].chars().all(char::is_whitespace),
+            inside: self.enclosing_marker(byte),
+        }
+    }
+
+    /// The innermost character or note marker still open at `byte`.
+    ///
+    /// Innermost by span length rather than by tree depth: a node's depth
+    /// depends on how the parser chose to nest a *malformed* region, and the
+    /// smallest span containing the cursor is the same answer without that
+    /// dependency.
+    ///
+    /// Scoped to one chunk, so this stays on the cheap path even though it
+    /// walks a tree — the chunk is a chapter, and it is parsed already.
+    fn enclosing_marker(&self, byte: usize) -> Option<String> {
+        let index = self
+            .chunks
+            .iter()
+            .position(|chunk| byte < chunk.end)
+            .unwrap_or(self.chunks.len().checked_sub(1)?);
+
+        let mut best: Option<(usize, String)> = None;
+
+        for root in &self.chunk_content(index) {
+            for node in root.descendants() {
+                let Some(span) = node.span.as_ref() else {
+                    continue;
+                };
+                // Half-open at the start: a cursor exactly on the marker's
+                // first byte is not yet inside it.
+                if span.start >= byte || byte > span.end {
+                    continue;
+                }
+                let Some(marker) = node.marker.as_ref() else {
+                    continue;
+                };
+
+                let name = marker.as_str().trim_start_matches('+');
+                let Some(info) = crate::markers::lookup(name) else {
+                    continue;
+                };
+                if !matches!(
+                    info.class,
+                    crate::markers::MarkerClass::Character | crate::markers::MarkerClass::Note
+                ) {
+                    continue;
+                }
+
+                let length = span.end - span.start;
+                if best.as_ref().is_none_or(|(shortest, _)| length < *shortest) {
+                    best = Some((length, name.to_string()));
+                }
+            }
+        }
+
+        best.map(|(_, name)| name)
+    }
+
     /// How a byte offset reads as a reference, for the status bar.
     pub fn reference_at(&self, byte: usize) -> Option<String> {
         crate::reference::reference_at(&self.verses(), self.book(), byte, self.chapter_at(byte))

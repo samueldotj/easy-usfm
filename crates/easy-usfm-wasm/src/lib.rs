@@ -328,6 +328,26 @@ impl Session {
         to_js(&answer)
     }
 
+    /// The marker list for a `\` (PRODUCT §6).
+    ///
+    /// `at` is the offset of the backslash, not of the caret: what is valid
+    /// depends on where the marker starts, and by the time the caret has moved
+    /// on the user may have typed half a name.
+    ///
+    /// The whole table comes back, ranked. Filtering as the name is typed is
+    /// the editor's job — it can do it without a round trip, and a list that
+    /// silently omits what someone is looking for is worse than a long one.
+    pub fn completions(&self, at: u32) -> JsValue {
+        let source = self.inner.source();
+        let byte = self
+            .mapper
+            .to_byte(source, Char16::from_editor(at))
+            .unwrap_or(source.len());
+
+        let context = self.inner.completion_context(byte);
+        to_js(&easy_usfm_core::completions(&context, source))
+    }
+
     /// How a Char16 offset reads as a reference, for the status bar.
     ///
     /// `null` before the first verse, where there is nothing to report — a

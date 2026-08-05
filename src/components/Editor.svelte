@@ -2,6 +2,7 @@
   import { Annotation, EditorState } from "@codemirror/state";
   import { EditorView, keymap, lineNumbers, highlightActiveLine, drawSelection } from "@codemirror/view";
   import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+  import { autocompletion, completionKeymap } from "@codemirror/autocomplete";
   import { onMount } from "svelte";
 
   import {
@@ -10,9 +11,10 @@
     setDiagnostics,
     stepDiagnostic,
   } from "../lib/diagnostics";
+  import { markerCompletions, optionClass } from "../lib/complete";
   import { changesOf, type Change } from "../lib/eol";
   import { highlighting, setTokens, tokenRequests } from "../lib/highlight";
-  import type { Diagnostic, Token } from "../worker/protocol";
+  import type { Completion, Diagnostic, Token } from "../worker/protocol";
 
   interface Props {
     value?: string;
@@ -27,6 +29,8 @@
     ontokenrange?: (from: number, to: number) => void;
     /** The cursor moved. The status bar asks the engine where that is. */
     oncursor?: (at: number) => void;
+    /** A backslash wants its marker list. */
+    oncomplete?: (at: number) => Promise<Completion[]>;
   }
 
   let {
@@ -37,6 +41,7 @@
     oncompositionend,
     ontokenrange,
     oncursor,
+    oncomplete,
   }: Props = $props();
 
   /**
@@ -65,7 +70,22 @@
           history(),
           drawSelection(),
           highlightActiveLine(),
+          // Before the default keymap, so Enter and the arrow keys reach the
+          // completion list while it is open rather than the document.
+          keymap.of(completionKeymap),
           keymap.of([...defaultKeymap, ...historyKeymap]),
+
+          autocompletion({
+            override: [markerCompletions((at) => oncomplete?.(at) ?? Promise.resolve([]))],
+            // Nothing else is completable, so a list with one entry left is
+            // still worth showing rather than silently applying.
+            activateOnCompletion: () => false,
+            // Off deliberately: the icon sprite is a set of generic shapes for
+            // programming-language symbols, and none of them means anything
+            // for USFM's marker classes. The detail line says it in words.
+            icons: false,
+            optionClass,
+          }),
 
           // Highlighting from the engine's own lexer (P2.6). The field holds
           // what has arrived; the listener asks for what is on screen.

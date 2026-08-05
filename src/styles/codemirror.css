@@ -155,6 +155,58 @@
   color: var(--syntax-attribute);
 }
 
+/* ------------------------------------------------------- autocomplete ---
+ *
+ * The marker list (P2.10). Static CSS like everything else here — the
+ * completion package injects its own structural base theme, but none of the
+ * appearance below goes through an injecting API (SECURITY §5).
+ */
+
+.cm-tooltip.cm-tooltip-autocomplete {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  /* The list is 300-odd long and filters as you type; without a bound it
+     covers the document it is meant to be helping with. */
+  max-block-size: 16rem;
+}
+
+.cm-tooltip-autocomplete > ul > li {
+  padding-block: 0.15rem;
+  padding-inline: 0.5rem;
+  /* Marker names are ASCII, and this is the one place in the editor where a
+     column of them lining up is worth having. */
+  font-family: var(--font-gutter);
+}
+
+.cm-tooltip-autocomplete > ul > li[aria-selected] {
+  background: color-mix(in srgb, var(--accent) 25%, transparent);
+  color: var(--text);
+}
+
+.cm-completionDetail {
+  margin-inline-start: 0.75rem;
+  color: var(--text-muted);
+  font-family: var(--font-content);
+  font-style: normal;
+  font-size: 0.85em;
+}
+
+/* Deprecated markers are greyed, with the replacement in the detail line
+   (PRODUCT §6). Struck through as well as dimmed: dimming alone is a contrast
+   difference, and this has to read for someone who cannot see it. */
+.cm-tooltip-autocomplete > ul > li.cm-usfm-deprecated .cm-completionLabel {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+.cm-completionMatchedText {
+  text-decoration: none;
+  font-weight: 600;
+  color: var(--accent);
+}
+
 /* -------------------------------------------------------- diagnostics ---
  *
  * An underline in the text and a glyph in the gutter, never hue alone

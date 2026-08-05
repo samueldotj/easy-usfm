@@ -8,6 +8,7 @@
 
 import { DeltaBuffer, type Batch } from "./delta";
 import type {
+  Completion,
   Diagnostic,
   Edit,
   ParseResult,
@@ -18,7 +19,7 @@ import type {
   UsfmVersion,
 } from "../worker/protocol";
 
-export type { Diagnostic, Resolution, UsfmVersion } from "../worker/protocol";
+export type { Completion, Diagnostic, Resolution, UsfmVersion } from "../worker/protocol";
 
 /** How long typing must stop before the mirror is verified. */
 const IDLE_MS = 400;
@@ -121,6 +122,8 @@ export class Engine {
   #whereTimer: ReturnType<typeof setTimeout> | null = null;
   /** Resolutions in flight, by the revision that asked. */
   #pending = new Map<number, (result: Resolution) => void>();
+  /** Completion requests in flight, likewise. */
+  #asking = new Map<number, (offers: Completion[]) => void>();
 
   /**
    * Connects to the engine.
@@ -243,6 +246,25 @@ export class Engine {
   }
 
   /**
+   * The marker list for a backslash at `at`.
+   *
+   * The engine ranks; the editor filters as the name is typed. Ranking needs
+   * the marker table, the parse tree at that position, and a count over the
+   * whole document -- none of which is on this side.
+   */
+  completions(at: number): Promise<Completion[]> {
+    return new Promise((settle) => {
+      if (!this.ready) {
+        settle([]);
+        return;
+      }
+      const rev = this.#next();
+      this.#asking.set(rev, settle);
+      this.#send({ kind: "completions", rev, at });
+    });
+  }
+
+  /**
    * The cursor has moved; ask what reference it is at.
    *
    * Debounced and coalesced to one outstanding question. The answer only
@@ -322,6 +344,11 @@ export class Engine {
       settle({ start: null, end: null, message });
     }
     this.#pending.clear();
+
+    // A completion list has nowhere to put a message, so an empty list is the
+    // whole of what it can say. The popup simply does not appear.
+    for (const settle of this.#asking.values()) settle([]);
+    this.#asking.clear();
   }
 
   #next(): number {
@@ -370,6 +397,13 @@ export class Engine {
         const settle = this.#pending.get(response.rev);
         this.#pending.delete(response.rev);
         settle?.(response.result);
+        return;
+      }
+
+      case "completions": {
+        const settle = this.#asking.get(response.rev);
+        this.#asking.delete(response.rev);
+        settle?.(response.completions);
         return;
       }
 

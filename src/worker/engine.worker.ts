@@ -14,7 +14,14 @@
 
 import init, { Session, version } from "../generated/wasm/easy_usfm_wasm";
 import wasmUrl from "../generated/wasm/easy_usfm_wasm_bg.wasm?url";
-import type { ParseResult, Request, Resolution, Response, Token } from "./protocol";
+import type {
+  Completion,
+  ParseResult,
+  Request,
+  Resolution,
+  Response,
+  Token,
+} from "./protocol";
 
 let session: Session | null = null;
 
@@ -70,6 +77,16 @@ self.onmessage = (event: MessageEvent<Request>) => {
           kind: "resolved",
           rev: request.rev,
           result: session.resolve(request.text) as Resolution,
+        });
+        break;
+      }
+
+      case "completions": {
+        if (!session) return;
+        reply({
+          kind: "completions",
+          rev: request.rev,
+          completions: session.completions(request.at) as Completion[],
         });
         break;
       }

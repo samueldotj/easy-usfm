@@ -35,6 +35,7 @@
 
 mod backend;
 mod char16;
+mod completion;
 mod diagnostic;
 mod document;
 mod fidelity;
@@ -52,6 +53,7 @@ mod verse;
 mod version;
 
 pub use char16::{Char16, Char16Range, Utf16Mapper};
+pub use completion::{completions, frequencies, Completion, Context as CompletionContext};
 pub use diagnostic::{Diagnostic, DiagnosticCode, Severity};
 pub use document::Document;
 pub use fidelity::{DecodeError, Eol, FileFidelity, LineEndings, Loaded};

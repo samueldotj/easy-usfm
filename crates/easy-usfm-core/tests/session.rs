@@ -660,3 +660,79 @@ fn chunked_reparse_beats_reparsing_the_whole_document() {
         "chunking bought less than a 10x improvement: {incremental:?} against {whole:?}"
     );
 }
+
+// ------------------------------------------------------------ completion ---
+
+/// The context at the position `@` marks, which stands where the `\` is.
+fn context_at(marked: &str) -> easy_usfm_core::CompletionContext {
+    let at = marked.find('@').expect("mark the position with @");
+    Session::new(marked.replace('@', "")).completion_context(at)
+}
+
+#[test]
+fn a_backslash_at_the_start_of_a_line_is_line_initial() {
+    let context = context_at(SRC_LINE_START);
+    assert!(context.line_initial);
+    assert_eq!(context.inside, None);
+}
+
+#[test]
+fn indentation_does_not_stop_a_marker_being_line_initial() {
+    // Leading whitespace before a marker occurs in hand-edited files, and the
+    // marker is still the first thing on the line.
+    assert!(context_at(SRC_INDENTED).line_initial);
+}
+
+#[test]
+fn a_backslash_after_text_is_not_line_initial() {
+    assert!(!context_at(SRC_MID_LINE).line_initial);
+}
+
+#[test]
+fn a_position_inside_a_character_marker_reports_it() {
+    // What decides whether the completion needs the `+` nesting prefix.
+    assert_eq!(context_at(SRC_INSIDE_BD).inside.as_deref(), Some("bd"));
+}
+
+#[test]
+fn a_position_outside_every_character_marker_reports_none() {
+    assert_eq!(context_at(SRC_AFTER_BD).inside, None);
+}
+
+#[test]
+fn the_innermost_marker_wins() {
+    assert_eq!(context_at(SRC_NESTED).inside.as_deref(), Some("it"));
+}
+
+// Raw strings, so the markers read as they do in a file. `@` stands where the
+// backslash being completed is.
+const SRC_LINE_START: &str = r"\id GEN
+\c 1
+@\p
+\v 1 a
+";
+const SRC_INDENTED: &str = r"\id GEN
+\c 1
+\p
+   @\q1 a
+";
+const SRC_MID_LINE: &str = r"\id GEN
+\c 1
+\p
+\v 1 some text @\bd
+";
+const SRC_INSIDE_BD: &str = r"\id GEN
+\c 1
+\p
+\v 1 \bd bold @\bd*
+";
+const SRC_AFTER_BD: &str = r"\id GEN
+\c 1
+\p
+\v 1 \bd bold\bd* plain @
+";
+const SRC_NESTED: &str = r"\id GEN
+\c 1
+\p
+\v 1 \bd b \+it i @\+it*\bd*
+";
