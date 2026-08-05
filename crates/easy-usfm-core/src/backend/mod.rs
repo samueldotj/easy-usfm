@@ -46,6 +46,21 @@ impl Backend {
         tree::convert_document(self.parsed.ast(), self.parsed.source_map())
     }
 
+    /// The token stream over a byte range.
+    ///
+    /// Lexed on demand rather than cached with the parse: ARCHITECTURE §8.1
+    /// puts this on the cheap tier, and the caller only ever wants the part
+    /// that is on screen.
+    pub(crate) fn tokens(source: &str) -> Vec<crate::Token> {
+        usfm3::tokenize(source)
+            .into_iter()
+            .map(|token| crate::Token {
+                kind: crate::token::classify(&token.kind, token.token_kind.as_deref()),
+                span: crate::ByteSpan::new(token.start, token.end),
+            })
+            .collect()
+    }
+
     /// Diagnostics, converted to our codes.
     pub(crate) fn diagnostics(&self) -> Vec<Diagnostic> {
         self.parsed

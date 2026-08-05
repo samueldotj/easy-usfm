@@ -53,11 +53,22 @@ export type Request =
   | { kind: "edit"; rev: number; edits: Edit[]; checksum?: number }
   /** The full document again, after a desync or an external reload. */
   | { kind: "resync"; rev: number; text: string }
+  /** Highlighting for a viewport, in UTF-16 offsets. */
+  | { kind: "tokens"; rev: number; from: number; to: number }
   | { kind: "version"; rev: number };
+
+/** One highlighted run. Carries a class, never a colour. */
+export interface Token {
+  class: string;
+  start: number;
+  end: number;
+}
 
 export type Response =
   | { kind: "ready" }
   | { kind: "parsed"; rev: number; result: ParseResult }
+  /** Highlighting for the range that was asked for, and only that range. */
+  | { kind: "tokens"; rev: number; from: number; to: number; tokens: Token[] }
   | { kind: "version"; rev: number; version: string }
   /**
    * The worker could not apply what it was sent and its mirror is no longer

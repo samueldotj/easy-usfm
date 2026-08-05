@@ -18,7 +18,7 @@
 //! happens at this boundary and nowhere else.
 
 use easy_usfm_core::{
-    ByteSpan, Char16, Char16Range, Session as CoreSession, Severity, Utf16Mapper,
+    ByteSpan, Char16, Char16Range, Session as CoreSession, Severity, TokenKind, Utf16Mapper,
 };
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
@@ -60,6 +60,17 @@ pub struct WireChunk {
     pub start: u32,
     pub end: u32,
     pub rev: u64,
+}
+
+/// One highlighted run.
+///
+/// Carries a class name rather than a colour: appearance lives in a stylesheet
+/// Vite extracts at build time, never in an injected theme (SECURITY §5).
+#[derive(Debug, Serialize)]
+pub struct WireToken {
+    pub class: &'static str,
+    pub start: u32,
+    pub end: u32,
 }
 
 /// What the worker answers a parse request with.
@@ -182,6 +193,43 @@ impl Session {
     /// The current parse, without changing anything.
     pub fn snapshot(&self) -> JsValue {
         self.result()
+    }
+
+    /// Tokens covering a Char16 range, for highlighting.
+    ///
+    /// Range-scoped because the caller is a viewport. Lexing 2 MB to paint
+    /// forty visible lines would put the expensive work on the one path that
+    /// has to keep up with typing (ARCHITECTURE §8.1).
+    pub fn tokens(&self, from: u32, to: u32) -> JsValue {
+        let source = self.inner.source();
+
+        let start = self
+            .mapper
+            .to_byte(source, Char16::from_editor(from))
+            .unwrap_or(0);
+        let end = self
+            .mapper
+            .to_byte(source, Char16::from_editor(to))
+            .unwrap_or(source.len());
+
+        let tokens: Vec<WireToken> = self
+            .inner
+            .tokens(&ByteSpan::new(start, end))
+            .into_iter()
+            // Text is the default appearance, so sending it would be a
+            // decoration per word for no visible effect.
+            .filter(|token| token.kind != TokenKind::Text)
+            .map(|token| {
+                let range = self.to_char16(source, &token.span);
+                WireToken {
+                    class: token.kind.css_class(),
+                    start: range.start.get(),
+                    end: range.end.get(),
+                }
+            })
+            .collect();
+
+        serde_wasm_bindgen::to_value(&tokens).unwrap_or(JsValue::NULL)
     }
 
     fn result(&self) -> JsValue {

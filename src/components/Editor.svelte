@@ -5,6 +5,8 @@
   import { onMount } from "svelte";
 
   import { changesOf, type Change } from "../lib/eol";
+  import { highlighting, setTokens, tokenRequests } from "../lib/highlight";
+  import type { Token } from "../worker/protocol";
 
   interface Props {
     value?: string;
@@ -15,6 +17,8 @@
     oncompositionstart?: () => void;
     /** It has committed. UNICODE §5 — everything held goes as one batch. */
     oncompositionend?: (value: string) => void;
+    /** The visible range changed and wants highlighting. */
+    ontokenrange?: (from: number, to: number) => void;
   }
 
   let {
@@ -23,6 +27,7 @@
     onchange,
     oncompositionstart,
     oncompositionend,
+    ontokenrange,
   }: Props = $props();
 
   /**
@@ -49,6 +54,11 @@
           drawSelection(),
           highlightActiveLine(),
           keymap.of([...defaultKeymap, ...historyKeymap]),
+
+          // Highlighting from the engine's own lexer (P2.6). The field holds
+          // what has arrived; the listener asks for what is on screen.
+          highlighting,
+          tokenRequests((from, to) => ontokenrange?.(from, to)),
 
           // UNICODE §8. Set on the content rather than inherited, because a
           // document beginning `\v 1` auto-detects as left-to-right and would
@@ -101,6 +111,11 @@
   /** Focus the editor. Used by F6 pane cycling. */
   export function focus(): void {
     view?.focus();
+  }
+
+  /** Applies highlighting that has come back from the engine. */
+  export function applyTokens(from: number, to: number, tokens: Token[]): void {
+    view?.dispatch({ effects: setTokens.of({ from, to, tokens }) });
   }
 
   /**

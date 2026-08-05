@@ -64,4 +64,7 @@ pub use verse::{VerseEntry, VerseId, VerseIndex};
 pub use version::Version;
 
 mod checksum;
+mod token;
+
 pub use checksum::checksum;
+pub use token::{Token, TokenKind};

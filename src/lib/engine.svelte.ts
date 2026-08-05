@@ -7,12 +7,27 @@
  */
 
 import { DeltaBuffer, type Batch } from "./delta";
-import type { Diagnostic, Edit, ParseResult, Request, Response } from "../worker/protocol";
+import type {
+  Diagnostic,
+  Edit,
+  ParseResult,
+  Request,
+  Response,
+  Token,
+} from "../worker/protocol";
 
 export type { Diagnostic } from "../worker/protocol";
 
 /** How long typing must stop before the mirror is verified. */
 const IDLE_MS = 400;
+
+/**
+ * How long viewport changes are coalesced before asking for highlighting.
+ *
+ * Short enough not to be seen, long enough that a scroll produces one request
+ * rather than one per frame.
+ */
+const TOKEN_MS = 30;
 
 /**
  * The part of `Worker` this uses.
@@ -71,6 +86,8 @@ export class Engine {
   #text = "";
   #buffer = new DeltaBuffer();
   #idleTimer: ReturnType<typeof setTimeout> | null = null;
+  #tokenTimer: ReturnType<typeof setTimeout> | null = null;
+  #wantedTokens: { from: number; to: number } | null = null;
 
   /**
    * Connects to the engine.
@@ -94,7 +111,9 @@ export class Engine {
 
   stop(): void {
     if (this.#idleTimer !== null) clearTimeout(this.#idleTimer);
+    if (this.#tokenTimer !== null) clearTimeout(this.#tokenTimer);
     this.#idleTimer = null;
+    this.#tokenTimer = null;
     this.#worker?.terminate();
     this.#worker = null;
     this.ready = false;
@@ -122,6 +141,37 @@ export class Engine {
     if (batch) this.#dispatch(batch);
     this.#scheduleIdle();
   }
+
+  /**
+   * Asks for highlighting over a range.
+   *
+   * Answers arrive at {@link ontokens}. Coalesced to one outstanding request:
+   * scrolling produces a viewport update per frame, and asking the engine to
+   * lex sixty times a second would put the cheap tier's work back on the
+   * expensive path.
+   */
+  requestTokens(from: number, to: number): void {
+    // Recorded even when the engine cannot answer yet. The first request
+    // arrives while the WASM module is still instantiating — dropping it means
+    // the document that is already on screen never gets highlighted, because
+    // nothing will ask again until the user scrolls.
+    this.#wantedTokens = { from, to };
+    this.#pumpTokens();
+  }
+
+  #pumpTokens(): void {
+    if (!this.ready || this.desynced || this.#tokenTimer !== null) return;
+    if (!this.#wantedTokens) return;
+
+    this.#tokenTimer = setTimeout(() => {
+      this.#tokenTimer = null;
+      const wanted = this.#wantedTokens;
+      if (wanted) this.#send({ kind: "tokens", rev: this.#next(), ...wanted });
+    }, TOKEN_MS);
+  }
+
+  /** Called with each answer. Set by the editor. */
+  ontokens: ((from: number, to: number, tokens: Token[]) => void) | null = null;
 
   /** An input method has started. Nothing goes over until it commits. */
   startComposition(): void {
@@ -197,6 +247,10 @@ export class Engine {
         this.#resync();
         return;
 
+      case "tokens":
+        this.ontokens?.(response.from, response.to, response.tokens);
+        return;
+
       case "parsed":
         // The whole point of the revision. A result older than one already
         // applied describes a document that no longer exists.
@@ -206,6 +260,9 @@ export class Engine {
         this.desynced = null;
         this.chunks = response.result.chunks;
         this.diagnostics = response.result.diagnostics;
+        // The document just changed on this side, so whatever highlighting was
+        // asked for is now worth answering.
+        this.#pumpTokens();
         return;
     }
   }

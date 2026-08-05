@@ -14,7 +14,7 @@
 
 import init, { Session, version } from "../generated/wasm/easy_usfm_wasm";
 import wasmUrl from "../generated/wasm/easy_usfm_wasm_bg.wasm?url";
-import type { ParseResult, Request, Response } from "./protocol";
+import type { ParseResult, Request, Response, Token } from "./protocol";
 
 let session: Session | null = null;
 
@@ -51,6 +51,18 @@ self.onmessage = (event: MessageEvent<Request>) => {
       case "version":
         reply({ kind: "version", rev: request.rev, version: version() });
         break;
+
+      case "tokens": {
+        if (!session) return;
+        reply({
+          kind: "tokens",
+          rev: request.rev,
+          from: request.from,
+          to: request.to,
+          tokens: session.tokens(request.from, request.to) as Token[],
+        });
+        break;
+      }
 
       case "open":
       case "resync":

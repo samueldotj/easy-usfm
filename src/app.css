@@ -33,6 +33,14 @@
   --text-muted: #71717a;
   --border: #d4d4d8;
   --accent: #2563eb;
+
+  /* Syntax. Kept beside the other colours so a theme is one set of values,
+     and chosen for 3:1 against the surface they sit on (PRODUCT §10). */
+  --syntax-marker: #6d28d9;
+  --syntax-chapter: #b45309;
+  --syntax-verse: #0369a1;
+  --syntax-milestone: #0f766e;
+  --syntax-attribute: #9d174d;
 }
 
 /*
@@ -52,6 +60,12 @@
     --text-muted: #a1a1aa;
     --border: #3f3f46;
     --accent: #60a5fa;
+
+    --syntax-marker: #c4b5fd;
+    --syntax-chapter: #fcd34d;
+    --syntax-verse: #7dd3fc;
+    --syntax-milestone: #5eead4;
+    --syntax-attribute: #f9a8d4;
   }
 }
 
@@ -62,6 +76,12 @@
   --text-muted: #a1a1aa;
   --border: #3f3f46;
   --accent: #60a5fa;
+
+  --syntax-marker: #c4b5fd;
+  --syntax-chapter: #fcd34d;
+  --syntax-verse: #7dd3fc;
+  --syntax-milestone: #5eead4;
+  --syntax-attribute: #f9a8d4;
 }
 
 :root[data-theme="light"] {
@@ -71,6 +91,12 @@
   --text-muted: #71717a;
   --border: #d4d4d8;
   --accent: #2563eb;
+
+  --syntax-marker: #6d28d9;
+  --syntax-chapter: #b45309;
+  --syntax-verse: #0369a1;
+  --syntax-milestone: #0f766e;
+  --syntax-attribute: #9d174d;
 }
 
 *,

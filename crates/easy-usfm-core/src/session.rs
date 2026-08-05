@@ -501,6 +501,28 @@ impl Session {
         (0..self.chunks.len()).all(|index| self.normalized(index).is_normalized())
     }
 
+    /// The token stream over a byte range, for highlighting.
+    ///
+    /// Scoped to a range because the caller is a viewport: highlighting the
+    /// whole of a 2 MB document to paint forty visible lines would put the
+    /// expensive work on the path that has to keep up with typing.
+    ///
+    /// The range is widened to line boundaries, since a token cut in half by
+    /// the viewport edge would be classified by whatever fragment happened to
+    /// be inside it.
+    pub fn tokens(&self, range: &ByteSpan) -> Vec<crate::Token> {
+        let start = line_start(&self.source, range.start.min(self.source.len()));
+        let end = line_end(&self.source, range.end.min(self.source.len()));
+
+        Backend::tokens(&self.source[start..end])
+            .into_iter()
+            .map(|token| crate::Token {
+                kind: token.kind,
+                span: shift_span(&token.span, start),
+            })
+            .collect()
+    }
+
     /// Every verse in the document, in source order.
     ///
     /// Built across chunks, because verse numbering is only meaningful as a

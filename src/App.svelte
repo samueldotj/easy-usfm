@@ -16,6 +16,7 @@
   const counts = $derived(engine.counts);
 
   onMount(async () => {
+    engine.ontokens = (from, to, tokens) => editor?.applyTokens(from, to, tokens);
     engine.start();
     await run(() => doc.createNew());
     // The editor was constructed before the document existed, so it is given
@@ -185,6 +186,7 @@
           }}
           oncompositionstart={() => engine.startComposition()}
           oncompositionend={(text) => engine.endComposition(text)}
+          ontokenrange={(from, to) => engine.requestTokens(from, to)}
         />
       {/snippet}
 
