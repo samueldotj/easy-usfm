@@ -14,6 +14,16 @@ export default defineConfig({
     port: 1420,
     strictPort: true,
     host: false,
+
+    // Cargo's output is not source, and watching it is actively fatal on
+    // Windows: the linker holds the shell's .exe open exclusively while it
+    // writes, so `fs.watch` on that path throws EBUSY, chokidar re-emits it as
+    // an unhandled error, and Vite exits — taking `tauri dev` down with it in
+    // the middle of the build that caused it. There is nothing in here Vite
+    // could serve, so the fix is simply not to look.
+    watch: {
+      ignored: ["**/target/**", "**/fuzz/**", "**/corpus/**"],
+    },
   },
 
   // Tauri shows its own startup output; clearing the screen hides it.
