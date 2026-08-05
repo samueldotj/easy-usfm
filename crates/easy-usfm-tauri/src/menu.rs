@@ -106,6 +106,15 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, recent: &[String]) -> tauri::Result
                 .build(app)?,
         )
         .separator()
+        // Ctrl+G on Windows and Linux. macOS wants Cmd+L instead, because
+        // Cmd+G is Find Next by universal convention there — P6.1's per-
+        // platform pass is where that split belongs (PRODUCT §6.4).
+        .item(
+            &MenuItemBuilder::with_id("go-to-reference", "&Go to Reference…")
+                .accelerator("CmdOrCtrl+G")
+                .build(app)?,
+        )
+        .separator()
         // The accelerators are declared here and only here. The interface's own
         // key handler stands down on the desktop, so a shortcut shown beside a
         // menu item is the one that runs -- and there is no second binding to

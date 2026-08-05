@@ -595,6 +595,55 @@ impl Session {
         VerseIndex::build(&self.content())
     }
 
+    /// The book this document says it is, from `\id`.
+    pub fn book(&self) -> Option<&str> {
+        self.book_code()
+    }
+
+    /// Where a chapter begins.
+    ///
+    /// The `\c` line itself, so going to a chapter puts the cursor on the
+    /// marker rather than in whatever happens to follow it. A chapter with no
+    /// verses under it still has a location — `\c 3` with nothing after it is
+    /// exactly the half-finished state this editor has to stay usable in, and
+    /// the verse index cannot answer for it.
+    pub fn chapter_span(&self, number: u16) -> Option<ByteSpan> {
+        let chunk = self
+            .chunks
+            .iter()
+            .find(|chunk| chunk.number == Some(u32::from(number)))?;
+        Some(ByteSpan::new(
+            chunk.start,
+            line_end(&self.source, chunk.start),
+        ))
+    }
+
+    /// Resolves a reference the user typed (PRODUCT §6.2).
+    pub fn resolve(&self, text: &str) -> crate::Resolution {
+        let Some(reference) = crate::Reference::parse(text) else {
+            return crate::Resolution::Unparseable;
+        };
+        crate::reference::resolve(&reference, &self.verses(), self.book(), |chapter| {
+            self.chapter_span(chapter)
+        })
+    }
+
+    /// How a byte offset reads as a reference, for the status bar.
+    pub fn reference_at(&self, byte: usize) -> Option<String> {
+        crate::reference::reference_at(&self.verses(), self.book(), byte, self.chapter_at(byte))
+    }
+
+    /// Which chapter a byte offset is in, from the chunking rather than the
+    /// parse — chunks partition at `\c`, so this is what they are.
+    fn chapter_at(&self, byte: usize) -> Option<u16> {
+        let chunk = self
+            .chunks
+            .iter()
+            .find(|chunk| byte < chunk.end)
+            .or_else(|| self.chunks.last())?;
+        u16::try_from(chunk.number?).ok()
+    }
+
     /// Tier 3 — what no single chunk can see.
     ///
     /// Duplicate chapters and the whole verse index: both are questions about

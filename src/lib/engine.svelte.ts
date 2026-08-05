@@ -13,11 +13,12 @@ import type {
   ParseResult,
   Request,
   Response,
+  Resolution,
   Token,
   UsfmVersion,
 } from "../worker/protocol";
 
-export type { Diagnostic, UsfmVersion } from "../worker/protocol";
+export type { Diagnostic, Resolution, UsfmVersion } from "../worker/protocol";
 
 /** How long typing must stop before the mirror is verified. */
 const IDLE_MS = 400;
@@ -29,6 +30,15 @@ const IDLE_MS = 400;
  * rather than one per frame.
  */
 const TOKEN_MS = 30;
+
+/**
+ * How long the cursor must settle before the status bar asks where it is.
+ *
+ * Arrow-keying through a verse would otherwise be one round trip per
+ * character, to answer a question whose answer only changes at verse
+ * boundaries.
+ */
+const WHERE_MS = 120;
 
 /**
  * The part of `Worker` this uses.
@@ -73,6 +83,9 @@ export class Engine {
   diagnostics = $state<Diagnostic[]>([]);
   chunks = $state<ParseResult["chunks"]>([]);
 
+  /** Where the cursor is, as a reference. `null` before the first verse. */
+  reference = $state<string | null>(null);
+
   /** The *document's* USFM version, which is not the engine's. */
   usfm = $state<UsfmVersion>({
     declared: null,
@@ -105,6 +118,9 @@ export class Engine {
   #idleTimer: ReturnType<typeof setTimeout> | null = null;
   #tokenTimer: ReturnType<typeof setTimeout> | null = null;
   #wantedTokens: { from: number; to: number } | null = null;
+  #whereTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Resolutions in flight, by the revision that asked. */
+  #pending = new Map<number, (result: Resolution) => void>();
 
   /**
    * Connects to the engine.
@@ -129,8 +145,11 @@ export class Engine {
   stop(): void {
     if (this.#idleTimer !== null) clearTimeout(this.#idleTimer);
     if (this.#tokenTimer !== null) clearTimeout(this.#tokenTimer);
+    if (this.#whereTimer !== null) clearTimeout(this.#whereTimer);
     this.#idleTimer = null;
     this.#tokenTimer = null;
+    this.#whereTimer = null;
+    this.#abandon("The engine has stopped.");
     this.#worker?.terminate();
     this.#worker = null;
     this.ready = false;
@@ -204,6 +223,42 @@ export class Engine {
     }, TOKEN_MS);
   }
 
+  /**
+   * Looks up a reference the user typed (PRODUCT §6.2).
+   *
+   * Resolved in the engine rather than here because it needs the verse index,
+   * which is built from the parse — and because the `\vp` fallback compares
+   * published numbers that only the engine has.
+   */
+  resolve(text: string): Promise<Resolution> {
+    return new Promise((settle) => {
+      if (!this.ready) {
+        settle({ start: null, end: null, message: "The engine is still starting." });
+        return;
+      }
+      const rev = this.#next();
+      this.#pending.set(rev, settle);
+      this.#send({ kind: "resolve", rev, text });
+    });
+  }
+
+  /**
+   * The cursor has moved; ask what reference it is at.
+   *
+   * Debounced and coalesced to one outstanding question. The answer only
+   * changes at verse boundaries, so asking per keystroke would be a round trip
+   * per character to learn nothing.
+   */
+  locate(at: number): void {
+    if (!this.ready) return;
+    if (this.#whereTimer !== null) clearTimeout(this.#whereTimer);
+
+    this.#whereTimer = setTimeout(() => {
+      this.#whereTimer = null;
+      this.#send({ kind: "where", rev: this.#next(), at });
+    }, WHERE_MS);
+  }
+
   /** Called with each answer. Set by the editor. */
   ontokens: ((from: number, to: number, tokens: Token[]) => void) | null = null;
 
@@ -255,6 +310,20 @@ export class Engine {
     }
   }
 
+  /**
+   * Settles every waiting lookup with a failure.
+   *
+   * Called wherever the engine can no longer answer. Settling rather than
+   * rejecting: a caller awaiting a reference is showing a dialog, and a
+   * rejection there is an unhandled error rather than a message.
+   */
+  #abandon(message: string): void {
+    for (const settle of this.#pending.values()) {
+      settle({ start: null, end: null, message });
+    }
+    this.#pending.clear();
+  }
+
   #next(): number {
     this.#rev += 1;
     return this.#rev;
@@ -281,6 +350,11 @@ export class Engine {
 
       case "desync":
         this.desynced = response.reason;
+        // Anything waiting for an answer will never get one -- the session
+        // that was going to answer has been freed. A promise left unsettled
+        // here is not a lost reply, it is a caller stuck forever, which is how
+        // one bad lookup disables Go to Reference for the rest of the session.
+        this.#abandon("The engine lost track of the document; try again.");
         // Repair immediately rather than waiting for the next keystroke: a
         // desynced engine shows stale diagnostics until it is fixed.
         this.#resync();
@@ -288,6 +362,19 @@ export class Engine {
 
       case "tokens":
         this.ontokens?.(response.from, response.to, response.tokens);
+        return;
+
+      case "resolved": {
+        // Settled by the revision that asked, so two lookups in flight cannot
+        // answer each other.
+        const settle = this.#pending.get(response.rev);
+        this.#pending.delete(response.rev);
+        settle?.(response.result);
+        return;
+      }
+
+      case "where":
+        this.reference = response.reference;
         return;
 
       case "parsed":

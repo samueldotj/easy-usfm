@@ -25,6 +25,8 @@
     oncompositionend?: (value: string) => void;
     /** The visible range changed and wants highlighting. */
     ontokenrange?: (from: number, to: number) => void;
+    /** The cursor moved. The status bar asks the engine where that is. */
+    oncursor?: (at: number) => void;
   }
 
   let {
@@ -34,6 +36,7 @@
     oncompositionstart,
     oncompositionend,
     ontokenrange,
+    oncursor,
   }: Props = $props();
 
   /**
@@ -93,6 +96,11 @@
             if (update.docChanged && !external) {
               onchange?.(update.state.doc.toString(), changesOf(update.changes));
             }
+            // Also on a document change: typing past a \v marker changes
+            // which verse the cursor is in without moving the selection.
+            if (update.selectionSet || update.docChanged) {
+              oncursor?.(update.state.selection.main.head);
+            }
           }),
         ],
       }),
@@ -140,6 +148,23 @@
   /** The panel asking to go to one of them. */
   export function goTo(index: number, focus: boolean): void {
     if (view) revealDiagnostic(view, index, focus);
+  }
+
+  /**
+   * Puts the cursor on a resolved reference and scrolls it into view.
+   *
+   * Selects the range rather than collapsing to its start, so that arriving
+   * somewhere is visible -- landing a bare cursor in the middle of a screen of
+   * text says nothing about whether anything happened.
+   */
+  export function reveal(from: number, to: number): void {
+    if (!view) return;
+    const length = view.state.doc.length;
+    view.dispatch({
+      selection: { anchor: Math.min(from, length), head: Math.min(to, length) },
+      scrollIntoView: true,
+    });
+    view.focus();
   }
 
   /**

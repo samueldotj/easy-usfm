@@ -83,8 +83,26 @@ export type Request =
    * desync frees the session.
    */
   | { kind: "override-version"; rev: number; version: string | null }
+  /** Go to Reference. The text exactly as typed; the engine does the parsing. */
+  | { kind: "resolve"; rev: number; text: string }
+  /** What reference a cursor position is at, for the status bar. */
+  | { kind: "where"; rev: number; at: number }
   /** The *engine's* version, which is a different question entirely. */
   | { kind: "version"; rev: number };
+
+/**
+ * What came of looking up a reference.
+ *
+ * The failure carries a sentence, not a code. Every way a reference can fail
+ * means something different to the person who typed it, and the engine is the
+ * only side that knows which happened -- most importantly that the verse is in
+ * a different file, which "not found" would never suggest.
+ */
+export interface Resolution {
+  start: number | null;
+  end: number | null;
+  message: string | null;
+}
 
 /** One highlighted run. Carries a class, never a colour. */
 export interface Token {
@@ -98,6 +116,8 @@ export type Response =
   | { kind: "parsed"; rev: number; result: ParseResult }
   /** Highlighting for the range that was asked for, and only that range. */
   | { kind: "tokens"; rev: number; from: number; to: number; tokens: Token[] }
+  | { kind: "resolved"; rev: number; result: Resolution }
+  | { kind: "where"; rev: number; reference: string | null }
   | { kind: "version"; rev: number; version: string }
   /**
    * The worker could not apply what it was sent and its mirror is no longer

@@ -3,6 +3,7 @@
 
   import DiagnosticsPanel from "./components/DiagnosticsPanel.svelte";
   import Editor from "./components/Editor.svelte";
+  import GoToReference from "./components/GoToReference.svelte";
   import SplitPane from "./components/SplitPane.svelte";
   import Toolbar from "./components/Toolbar.svelte";
   import VersionPicker from "./components/VersionPicker.svelte";
@@ -12,8 +13,29 @@
   import { theme, type Theme } from "./lib/theme.svelte";
 
   let editor: Editor | undefined = $state();
+  let goto: GoToReference | undefined = $state();
   let error = $state<string | null>(null);
   let panelOpen = $state(true);
+
+  /**
+   * Asks the engine, moves the cursor, and reports what to say if it failed.
+   *
+   * The dialog stays open on failure with the reason, because the fix is
+   * almost always one character — and because "GEN 1:1 is in a different file"
+   * is not a failure the user can act on by retyping.
+   */
+  async function goToReference(text: string): Promise<string | null> {
+    const result = await engine.resolve(text);
+    // Tested for being a number rather than for not being null. This crosses
+    // from another language, where "absent" has been both `null` and
+    // `undefined` at different times, and a check that only catches one of
+    // those hands `undefined` to the editor as a cursor position.
+    if (typeof result.start !== "number" || typeof result.end !== "number") {
+      return result.message ?? "That reference is not in this document.";
+    }
+    editor?.reveal(result.start, result.end);
+    return null;
+  }
 
   const lines = $derived(doc.text.split("\n").length);
   const counts = $derived(engine.counts);
@@ -95,6 +117,9 @@
         case "previous-diagnostic":
           editor?.step(false);
           break;
+        case "go-to-reference":
+          goto?.open();
+          break;
       }
     });
   }
@@ -173,6 +198,15 @@
       return;
     }
 
+    // Ctrl+G on Windows and Linux; ⌘L on macOS, where ⌘G is Find Next by
+    // universal convention and is reserved for it (PRODUCT §6.4).
+    const wantsGoTo = event.metaKey ? event.key.toLowerCase() === "l" : event.key.toLowerCase() === "g";
+    if (wantsGoTo) {
+      event.preventDefault();
+      goto?.open();
+      return;
+    }
+
     switch (event.key.toLowerCase()) {
       case "n":
         event.preventDefault();
@@ -223,6 +257,7 @@
           oncompositionstart={() => engine.startComposition()}
           oncompositionend={(text) => engine.endComposition(text)}
           ontokenrange={(from, to) => engine.requestTokens(from, to)}
+          oncursor={(at) => engine.locate(at)}
         />
       {/snippet}
 
@@ -233,6 +268,12 @@
       {/snippet}
     </SplitPane>
   </main>
+
+  <GoToReference
+    bind:this={goto}
+    onsubmit={goToReference}
+    onclose={() => editor?.focus()}
+  />
 
   <DiagnosticsPanel
     diagnostics={engine.diagnostics}
@@ -251,6 +292,11 @@
         {doc.summary.eol}
       </span>
       {#if doc.summary.bom}<span>BOM</span>{/if}
+    {/if}
+    {#if engine.reference}
+      <!-- Where the cursor is. Shows the published number when the file has
+           one, because that is the number on the page (PRODUCT §6.2). -->
+      <span class="reference">{engine.reference}</span>
     {/if}
     <VersionPicker version={engine.usfm} onchange={(v) => engine.overrideVersion(v)} />
     <div class="spacer"></div>
@@ -291,6 +337,13 @@
 
   .note {
     color: var(--accent);
+  }
+
+  .reference {
+    color: var(--text);
+    /* The reference may carry a published number in any script (UNICODE §6). */
+    font-family: var(--font-content);
+    font-variant-numeric: tabular-nums;
   }
 
   .error {

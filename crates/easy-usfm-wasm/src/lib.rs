@@ -18,8 +18,8 @@
 //! happens at this boundary and nowhere else.
 
 use easy_usfm_core::{
-    ByteSpan, Char16, Char16Range, Session as CoreSession, Severity, TokenKind, Utf16Mapper,
-    Version,
+    ByteSpan, Char16, Char16Range, Resolution, Session as CoreSession, Severity, TokenKind,
+    Utf16Mapper, Version,
 };
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
@@ -100,6 +100,22 @@ pub struct WireVersion {
     /// at that moment. Hardcoding it there would put the same constant in two
     /// languages, which is how the two stop agreeing.
     pub assumed: String,
+}
+
+/// What came of looking up a reference.
+///
+/// The failure carries a sentence rather than a code, because every one of
+/// them means something different to the person who typed it and the engine is
+/// the only side that knows which happened. "Not found" would send someone
+/// looking for the wrong problem — most often for a verse that is in a
+/// different file entirely.
+#[derive(Debug, Serialize)]
+pub struct WireResolution {
+    /// Char16, when it resolved.
+    pub start: Option<u32>,
+    pub end: Option<u32>,
+    /// What to say when it did not.
+    pub message: Option<String>,
 }
 
 /// What the worker answers a parse request with.
@@ -276,7 +292,55 @@ impl Session {
             })
             .collect();
 
-        serde_wasm_bindgen::to_value(&tokens).unwrap_or(JsValue::NULL)
+        to_js(&tokens)
+    }
+
+    /// Go to Reference (PRODUCT §6.2).
+    pub fn resolve(&self, text: &str) -> JsValue {
+        let source = self.inner.source();
+
+        let answer = match self.inner.resolve(text) {
+            Resolution::Found(span) => {
+                let range = self.to_char16(source, &span);
+                WireResolution {
+                    start: Some(range.start.get()),
+                    end: Some(range.end.get()),
+                    message: None,
+                }
+            }
+            Resolution::Unparseable => {
+                refusal("Type a reference like GEN 1:1, 1:1, or 3.".to_string())
+            }
+            Resolution::WrongBook { document, asked } => refusal(match document {
+                Some(document) => {
+                    format!("This document is {document}, not {asked}. Open {asked} to go there.")
+                }
+                None => format!("This document does not say it is {asked}."),
+            }),
+            Resolution::NoSuchChapter(chapter) => {
+                refusal(format!("This document has no chapter {chapter}."))
+            }
+            Resolution::NoSuchVerse { chapter, verse } => {
+                refusal(format!("Chapter {chapter} has no verse {verse}."))
+            }
+        };
+
+        to_js(&answer)
+    }
+
+    /// How a Char16 offset reads as a reference, for the status bar.
+    ///
+    /// `null` before the first verse, where there is nothing to report — a
+    /// header is not at any reference, and inventing one would be a lie the
+    /// status bar tells continuously.
+    #[wasm_bindgen(js_name = referenceAt)]
+    pub fn reference_at(&self, at: u32) -> Option<String> {
+        let source = self.inner.source();
+        let byte = self
+            .mapper
+            .to_byte(source, Char16::from_editor(at))
+            .unwrap_or(source.len());
+        self.inner.reference_at(byte)
     }
 
     fn result(&self) -> JsValue {
@@ -331,7 +395,7 @@ impl Session {
             len: self.mapper.len_char16().get(),
         };
 
-        serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL)
+        to_js(&result)
     }
 
     /// Byte offsets to UTF-16, at the one boundary where that conversion is
@@ -346,10 +410,32 @@ impl Session {
     }
 }
 
+/// Serialises a payload for JavaScript.
+///
+/// The one thing configured here is that `None` crosses as `null` rather than
+/// `undefined`, which is serde-wasm-bindgen's default. The difference is
+/// invisible until a caller writes the obvious `x === null` check: that is
+/// false for `undefined`, so the *failure* branch is skipped and the success
+/// code runs with nothing in it. Go to Reference did exactly that -- every
+/// unresolvable reference threw inside the editor instead of showing its
+/// message.
+fn to_js<T: Serialize>(value: &T) -> JsValue {
+    const SERIALIZER: serde_wasm_bindgen::Serializer =
+        serde_wasm_bindgen::Serializer::new().serialize_missing_as_null(true);
+    value.serialize(&SERIALIZER).unwrap_or(JsValue::NULL)
+}
+
+fn refusal(message: String) -> WireResolution {
+    WireResolution {
+        start: None,
+        end: None,
+        message: Some(message),
+    }
+}
+
 fn refuse(message: &str) -> JsValue {
-    serde_wasm_bindgen::to_value(&WireError {
+    to_js(&WireError {
         error: message.to_string(),
         resync: true,
     })
-    .unwrap_or(JsValue::NULL)
 }
