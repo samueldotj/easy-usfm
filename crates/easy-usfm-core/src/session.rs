@@ -28,7 +28,7 @@ use std::cell::OnceCell;
 
 use crate::backend::Backend;
 use crate::severity::{self, DiagnosticConfig};
-use crate::{ByteSpan, Diagnostic, DiagnosticCode, Node, NormalizedIndex, VerseIndex};
+use crate::{ByteSpan, Diagnostic, DiagnosticCode, Node, NormalizedIndex, VerseIndex, Version};
 
 /// One edit, in byte offsets against the document as it was **before** the
 /// batch was applied.
@@ -161,6 +161,10 @@ pub struct Session {
     chunks: Vec<Chunk>,
     rev: u64,
     config: DiagnosticConfig,
+    /// What the file itself declares, re-read after every edit.
+    detected: Option<Version>,
+    /// What the user has said instead, which wins and survives edits.
+    overridden: Option<Version>,
 }
 
 impl Session {
@@ -174,16 +178,71 @@ impl Session {
     pub fn with_config(source: impl Into<String>, config: DiagnosticConfig) -> Self {
         let source = source.into();
         let chunks = split(&source, 0, 0);
+        let detected = Version::detect(&source);
         Self {
             source,
             chunks,
             rev: 0,
             config,
+            detected,
+            overridden: None,
         }
     }
 
     pub fn config(&self) -> &DiagnosticConfig {
         &self.config
+    }
+
+    /// What the document declares, if it declares anything.
+    ///
+    /// `None` is not the same as [`Version::ASSUMED`] and the interface shows
+    /// them differently: most files in circulation carry no `\usfm` line and
+    /// are perfectly valid (PRODUCT §4), so "says nothing" has to be
+    /// distinguishable from "says 3.0" or the status bar reports a declaration
+    /// the file does not make.
+    pub fn detected_version(&self) -> Option<Version> {
+        self.detected
+    }
+
+    /// The version diagnostics are actually judged against.
+    pub fn document_version(&self) -> Version {
+        self.config.document_version
+    }
+
+    /// Whether that came from the user rather than from the file.
+    pub fn version_is_overridden(&self) -> bool {
+        self.overridden.is_some()
+    }
+
+    /// Overrides the document's version, or returns to what the file says.
+    ///
+    /// Changes no text. PRODUCT §4 is explicit that the detected version is
+    /// **never written into the file automatically**, and an override that
+    /// edited the `\usfm` line would be exactly that — with the added problem
+    /// that it would dirty a document the user only wanted to look at
+    /// differently.
+    ///
+    /// Nothing is reparsed. Severity is derived from the marker table at
+    /// query time rather than cached with the chunk precisely so that this
+    /// costs nothing.
+    pub fn override_version(&mut self, version: Option<Version>) {
+        self.overridden = version;
+        self.config.document_version = version.or(self.detected).unwrap_or(Version::ASSUMED);
+    }
+
+    /// Re-reads the `\usfm` declaration after an edit.
+    ///
+    /// Cheap enough to do unconditionally: the scan stops at the first `\c`,
+    /// so it reads the header and not the document.
+    ///
+    /// A user override survives — someone who has said "treat this as 2.0"
+    /// has not asked to be second-guessed the next time they touch the header.
+    fn redetect_version(&mut self) {
+        self.detected = Version::detect(&self.source);
+        self.config.document_version = self
+            .overridden
+            .or(self.detected)
+            .unwrap_or(Version::ASSUMED);
     }
 
     pub fn source(&self) -> &str {
@@ -237,6 +296,10 @@ impl Session {
             total.shifted += one.shifted;
         }
 
+        // After the whole batch rather than per edit: typing `\usfm 3.1` a
+        // character at a time passes through `\usfm 3` on the way, and there is
+        // no reason to publish each of those.
+        self.redetect_version();
         Ok(total)
     }
 

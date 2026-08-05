@@ -5,6 +5,7 @@
   import Editor from "./components/Editor.svelte";
   import SplitPane from "./components/SplitPane.svelte";
   import Toolbar from "./components/Toolbar.svelte";
+  import VersionPicker from "./components/VersionPicker.svelte";
   import { doc } from "./lib/document.svelte";
   import { engine } from "./lib/engine.svelte";
   import { isDesktop } from "./lib/shell";
@@ -251,6 +252,7 @@
       </span>
       {#if doc.summary.bom}<span>BOM</span>{/if}
     {/if}
+    <VersionPicker version={engine.usfm} onchange={(v) => engine.overrideVersion(v)} />
     <div class="spacer"></div>
     {#if engine.desynced}
       <span class="warn" title={engine.desynced}>Engine resyncing</span>

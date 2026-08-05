@@ -14,9 +14,10 @@ import type {
   Request,
   Response,
   Token,
+  UsfmVersion,
 } from "../worker/protocol";
 
-export type { Diagnostic } from "../worker/protocol";
+export type { Diagnostic, UsfmVersion } from "../worker/protocol";
 
 /** How long typing must stop before the mirror is verified. */
 const IDLE_MS = 400;
@@ -72,6 +73,14 @@ export class Engine {
   diagnostics = $state<Diagnostic[]>([]);
   chunks = $state<ParseResult["chunks"]>([]);
 
+  /** The *document's* USFM version, which is not the engine's. */
+  usfm = $state<UsfmVersion>({
+    declared: null,
+    effective: "3.0",
+    overridden: false,
+    assumed: "3.0",
+  });
+
   /**
    * Set when the worker's mirror stopped matching the editor. The document is
    * still safe — the buffer is authoritative (ADR-003) — but nothing the
@@ -84,6 +93,14 @@ export class Engine {
   #applied = 0;
   /** The last text sent, so a desync can be repaired without asking anyone. */
   #text = "";
+  /**
+   * The user's version choice, held here rather than in the engine.
+   *
+   * A desync frees the worker's session, so the engine cannot be the authority
+   * on anything that has to survive one. This side already resends the text
+   * for exactly that reason; the override goes with it.
+   */
+  #override: string | null = null;
   #buffer = new DeltaBuffer();
   #idleTimer: ReturnType<typeof setTimeout> | null = null;
   #tokenTimer: ReturnType<typeof setTimeout> | null = null;
@@ -119,8 +136,25 @@ export class Engine {
     this.ready = false;
   }
 
+  /**
+   * Judges the document as a different USFM version.
+   *
+   * `null` returns to what the file declares. Nothing is written to the file —
+   * PRODUCT §4 is explicit that the detected version is never written in
+   * automatically, and an override that edited the header would dirty a
+   * document the user only wanted to look at differently.
+   */
+  overrideVersion(version: string | null): void {
+    this.#override = version;
+    if (this.ready) this.#send({ kind: "override-version", rev: this.#next(), version });
+  }
+
   open(text: string): void {
     this.#text = text;
+    // A new document is judged on its own terms. Carrying the last one's
+    // override across would silently apply a decision about one file to
+    // another, and there is nothing on screen that would say so.
+    this.#override = null;
     // Held until the module is ready; `ready` sends it. Queuing here rather
     // than making every caller wait keeps the document lifecycle free of the
     // engine's startup.
@@ -214,6 +248,11 @@ export class Engine {
 
   #resync(): void {
     this.#send({ kind: "resync", rev: this.#next(), text: this.#text });
+    // The engine has just been handed a fresh session, which knows nothing
+    // about a choice made before it existed.
+    if (this.#override !== null) {
+      this.#send({ kind: "override-version", rev: this.#next(), version: this.#override });
+    }
   }
 
   #next(): number {
@@ -260,6 +299,7 @@ export class Engine {
         this.desynced = null;
         this.chunks = response.result.chunks;
         this.diagnostics = response.result.diagnostics;
+        this.usfm = response.result.version;
         // The document just changed on this side, so whatever highlighting was
         // asked for is now worth answering.
         this.#pumpTokens();

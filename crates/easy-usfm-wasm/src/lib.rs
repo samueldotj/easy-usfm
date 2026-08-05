@@ -19,6 +19,7 @@
 
 use easy_usfm_core::{
     ByteSpan, Char16, Char16Range, Session as CoreSession, Severity, TokenKind, Utf16Mapper,
+    Version,
 };
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
@@ -77,12 +78,37 @@ pub struct WireToken {
     pub end: u32,
 }
 
+/// The document's USFM version, as the status bar needs to say it.
+///
+/// `declared` is separate from `effective` because "says nothing" is not the
+/// same as "says 3.0" — most files in circulation carry no `\usfm` line and
+/// are valid (PRODUCT §4), and reporting only the effective version would make
+/// the status bar claim a declaration the file never made.
+#[derive(Debug, Serialize)]
+pub struct WireVersion {
+    /// What the file declares, or `None`.
+    pub declared: Option<String>,
+    /// What diagnostics are judged against.
+    pub effective: String,
+    /// Whether that came from the user rather than the file.
+    pub overridden: bool,
+    /// What a file declaring nothing is taken to be.
+    ///
+    /// Sent rather than assumed on the other side. The interface has to name
+    /// this number while an override is in force -- to say what clearing the
+    /// override would go back to -- and it cannot derive it from `effective`
+    /// at that moment. Hardcoding it there would put the same constant in two
+    /// languages, which is how the two stop agreeing.
+    pub assumed: String,
+}
+
 /// What the worker answers a parse request with.
 #[derive(Debug, Serialize)]
 pub struct WireResult {
     pub rev: u64,
     pub chunks: Vec<WireChunk>,
     pub diagnostics: Vec<WireDiagnostic>,
+    pub version: WireVersion,
     /// The document's length in UTF-16 units, so the caller can check its
     /// mirror is the same length before trusting any offset in here.
     pub len: u32,
@@ -194,6 +220,23 @@ impl Session {
         self.result()
     }
 
+    /// Overrides the document's USFM version, or returns to what the file says.
+    ///
+    /// `null` clears the override. An unparseable string is treated as
+    /// clearing it too, rather than refused: this arrives from a control whose
+    /// values this side does not define, and a desync — which is what a
+    /// refusal becomes — is a wildly disproportionate answer to a bad dropdown
+    /// value.
+    ///
+    /// Reparses nothing. The severity that depends on this is derived at query
+    /// time, so the answer changes and the parse does not (ARCHITECTURE §8.1).
+    #[wasm_bindgen(js_name = overrideVersion)]
+    pub fn override_version(&mut self, version: Option<String>) -> JsValue {
+        self.inner
+            .override_version(version.as_deref().and_then(Version::parse));
+        self.result()
+    }
+
     /// The current parse, without changing anything.
     pub fn snapshot(&self) -> JsValue {
         self.result()
@@ -279,6 +322,12 @@ impl Session {
             rev: self.inner.rev(),
             chunks,
             diagnostics,
+            version: WireVersion {
+                declared: self.inner.detected_version().map(|v| v.to_string()),
+                effective: self.inner.document_version().to_string(),
+                overridden: self.inner.version_is_overridden(),
+                assumed: Version::ASSUMED.to_string(),
+            },
             len: self.mapper.len_char16().get(),
         };
 

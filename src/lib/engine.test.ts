@@ -93,6 +93,7 @@ class FakeWorker implements WorkerLike {
   #result(rev: number): ParseResult {
     return {
       rev,
+      version: { declared: null, effective: "3.0", overridden: false, assumed: "3.0" },
       chunks: [],
       diagnostics: [
         {

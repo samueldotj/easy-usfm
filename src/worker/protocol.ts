@@ -30,10 +30,27 @@ export interface Chunk {
   rev: number;
 }
 
+/**
+ * The document's USFM version.
+ *
+ * `declared` is separate from `effective` because "says nothing" is not the
+ * same as "says 3.0" — most files in circulation carry no `\usfm` line and are
+ * valid (PRODUCT §4), so a status bar reporting only the effective version
+ * would claim a declaration the file never made.
+ */
+export interface UsfmVersion {
+  declared: string | null;
+  effective: string;
+  overridden: boolean;
+  /** What a file declaring nothing is taken to be. Sent, not assumed here. */
+  assumed: string;
+}
+
 export interface ParseResult {
   rev: number;
   chunks: Chunk[];
   diagnostics: Diagnostic[];
+  version: UsfmVersion;
   /** UTF-16 length, for checking the mirror against this side. */
   len: number;
 }
@@ -57,6 +74,16 @@ export type Request =
   | { kind: "resync"; rev: number; text: string }
   /** Highlighting for a viewport, in UTF-16 offsets. */
   | { kind: "tokens"; rev: number; from: number; to: number }
+  /**
+   * Judge this document as the named USFM version, or `null` to go back to
+   * what the file says.
+   *
+   * Held on the main thread and re-sent after every open, so the engine never
+   * has to remember it across a resync — which it could not do anyway, since a
+   * desync frees the session.
+   */
+  | { kind: "override-version"; rev: number; version: string | null }
+  /** The *engine's* version, which is a different question entirely. */
   | { kind: "version"; rev: number };
 
 /** One highlighted run. Carries a class, never a colour. */

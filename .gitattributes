@@ -1,0 +1,20 @@
+# Source is LF, on every platform, in the working tree as well as the index.
+#
+# Not a style preference. This project exists to preserve a file's line endings
+# byte for byte, and its own sources flipping between CRLF and LF -- which is
+# what happens the first time any tool rewrites one on Windows -- turns a
+# three-line change into a whole-file diff that nobody can review. It happened
+# here, twice, before this file existed.
+* text=auto eol=lf
+
+# The corpus is evidence, not source.
+#
+# Its bytes are the thing under test: P1.9 builds BOM, CRLF and mixed-ending
+# variants from these files, and the round-trip tests assert byte-for-byte
+# equality against them. Letting git normalise line endings on the way in or
+# out would quietly rewrite the fixtures and the tests would still pass --
+# against a corpus that no longer resembles what translators actually have.
+corpus/** -text
+*.usfm -text
+*.sfm -text
+*.SFM -text

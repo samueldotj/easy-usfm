@@ -64,6 +64,16 @@ self.onmessage = (event: MessageEvent<Request>) => {
         break;
       }
 
+      case "override-version": {
+        if (!session) return;
+        reply({
+          kind: "parsed",
+          rev: request.rev,
+          result: session.overrideVersion(request.version ?? undefined) as ParseResult,
+        });
+        break;
+      }
+
       case "open":
       case "resync":
         session?.free();
