@@ -104,7 +104,7 @@ fn next_id() -> u64 {
 /// `\id` is required and a file without one is an error, so an empty buffer
 /// would greet every new document with a diagnostic. Starting from the
 /// smallest valid document is friendlier and just as honest.
-const NEW_DOCUMENT: &str = "\\id XXA\n\\h \n\\mt1 \n\\c 1\n\\p\n\\v 1 \n";
+use easy_usfm_core::NEW_DOCUMENT;
 
 impl Documents {
     fn insert(&self, path: Option<PathBuf>, fidelity: FileFidelity) -> u64 {
@@ -234,15 +234,12 @@ pub fn close_document(id: u64, documents: tauri::State<'_, Documents>) {
 }
 
 /// The per-line terminators, expanded to one entry per newline.
+///
+/// Delegates to the core, which is where the web shell reads it from too --
+/// two copies of this is two chances for a file's line endings to come back
+/// different depending on which build opened it.
 fn terminators(fidelity: &FileFidelity, newlines: usize) -> Vec<Eol> {
-    match &fidelity.eol {
-        LineEndings::Uniform(eol) => vec![*eol; newlines],
-        LineEndings::Mixed { per_line, dominant } => {
-            let mut out = per_line.clone();
-            out.resize(newlines, *dominant);
-            out
-        }
-    }
+    fidelity.eol.per_line(newlines)
 }
 
 /// Whether the path looks like a USFM file, for the dialog's filter.

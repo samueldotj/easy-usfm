@@ -9,42 +9,23 @@
  * edited, and enough of a summary to fill the status bar.
  */
 
-import { LineTerminators, type Change, type Eol } from "./eol";
-import { isDesktop } from "./shell";
+import {
+  documentService,
+  type DocumentService,
+  type Opened,
+  type SaveOutcome,
+  type Summary,
+} from "./documentService";
+import { LineTerminators, type Change } from "./eol";
 import { read, write } from "./settings";
 
-export interface Summary {
-  encoding: string;
-  eol: string;
-  bom: boolean;
-  final_newline: boolean;
-  mixed_eol: boolean;
-}
-
-interface Opened {
-  id: number;
-  path: string | null;
-  text: string;
-  summary: Summary;
-  eols: Eol[];
-}
-
-interface SaveReport {
-  path: string;
-  reason: string | null;
-  summary: Summary;
-}
+export type { Summary } from "./documentService";
 
 const RECENT_KEY = "recent";
 const RECENT_LIMIT = 10;
 
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((entry) => typeof entry === "string");
-
-async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
-  const { invoke: call } = await import("@tauri-apps/api/core");
-  return call<T>(command, args);
-}
 
 /**
  * A document, as the interface sees it.
@@ -54,6 +35,18 @@ class DocumentState {
   path = $state<string | null>(null);
   text = $state("");
   summary = $state<Summary | null>(null);
+
+  /**
+   * What this host cannot do, in words, for the interface to show.
+   *
+   * Empty on the desktop. On the web it is the difference between saving and
+   * downloading, which the user has to know before they rely on it — an editor
+   * that appears to save and does not is the worst failure available to it.
+   */
+  limitations = $state<readonly string[]>([]);
+
+  /** Whether Save writes back to the file, or produces a copy. */
+  savesInPlace = $state(true);
 
   /** Unsaved changes. The one piece of state a close must respect. */
   dirty = $state(false);
@@ -102,16 +95,11 @@ class DocumentState {
    *
    * The list lives in settings, which the shell cannot read, so Open Recent
    * would otherwise be permanently empty. Called on startup and whenever the
-   * list changes.
+   * list changes. The web service does nothing with it, having no menu.
    */
   async pushRecentToMenu(): Promise<void> {
-    if (!isDesktop()) return;
-    try {
-      await invoke("set_recent_files", { paths: this.recent });
-    } catch {
-      // A menu that failed to rebuild is not worth interrupting anyone over;
-      // every command in it is still reachable by its accelerator.
-    }
+    const service = await documentService();
+    await service.setRecentFiles(this.recent);
   }
 
   clearRecent(): void {
@@ -129,101 +117,85 @@ class DocumentState {
   }
 
   async createNew(): Promise<void> {
-    if (!isDesktop()) {
-      this.text = "\\id XXA\n\\h \n\\mt1 \n\\c 1\n\\p\n\\v 1 \n";
-      this.dirty = false;
-      return;
-    }
-    this.#adopt(await invoke<Opened>("new_document"));
+    const service = await documentService();
+    this.#adopt(await service.createNew());
+    this.#refreshHostFacts(service);
   }
 
   async open(path?: string): Promise<void> {
-    if (!isDesktop()) throw new Error("opening files needs the desktop application");
+    const service = await documentService();
+    const opened = await service.open(path);
+    // `null` is a cancelled dialog, which is not a failure and must not
+    // disturb the document already open.
+    if (!opened) return;
 
-    let chosen = path;
-    if (!chosen) {
-      const { open } = await import("@tauri-apps/plugin-dialog");
-      const picked = await open({
-        multiple: false,
-        directory: false,
-        filters: [{ name: "USFM", extensions: ["usfm", "sfm", "SFM", "USFM"] }],
-      });
-      if (typeof picked !== "string") return;
-      chosen = picked;
-    }
-
-    this.#adopt(await invoke<Opened>("open_document", { path: chosen }));
+    this.#adopt(opened);
+    this.#refreshHostFacts(service);
   }
 
   /**
-   * Saves, asking for a path only when there is not one already.
+   * Saves, asking for a location only when there is not one already.
    *
-   * A read-only target is not reported as a failure: the shell marks it, and
-   * the answer is Save As (FILE-FIDELITY §2, rung 3).
+   * A read-only target is not reported as a failure: the answer is Save As
+   * (FILE-FIDELITY §2, rung 3), and the service turns it into one.
    */
   async save(): Promise<boolean> {
-    if (this.id === null) return false;
-    if (!this.path) return this.saveAs();
+    const service = await documentService();
+    const outcome = service.canSaveInPlace(this.#editable())
+      ? await service.save(this.#editable())
+      : await service.saveAs(this.#editable());
 
-    try {
-      this.#applyReport(
-        await invoke<SaveReport>("save_document", {
-          request: { id: this.id, text: this.text, eols: this.#eols.toArray() },
-          path: null,
-        }),
-      );
-      return true;
-    } catch (error) {
-      const message = String(error);
-      if (message.includes("READONLY:")) return this.saveAs();
-      throw error;
-    }
+    return this.#applyOutcome(outcome, service);
   }
 
   async saveAs(): Promise<boolean> {
-    if (this.id === null) return false;
+    const service = await documentService();
+    return this.#applyOutcome(await service.saveAs(this.#editable()), service);
+  }
 
-    const { save } = await import("@tauri-apps/plugin-dialog");
-    const chosen = await save({
-      defaultPath: this.path ?? "untitled.usfm",
-      filters: [{ name: "USFM", extensions: ["usfm", "sfm"] }],
-    });
-    if (typeof chosen !== "string") return false;
+  /** What a service needs to write this document. */
+  #editable() {
+    return {
+      id: this.id,
+      path: this.path,
+      text: this.text,
+      eols: this.#eols.toArray(),
+      bom: this.summary?.bom ?? false,
+    };
+  }
 
-    this.#applyReport(
-      await invoke<SaveReport>("save_document", {
-        request: { id: this.id, text: this.text, eols: this.#eols.toArray() },
-        path: chosen,
-      }),
-    );
+  #applyOutcome(outcome: SaveOutcome, service: DocumentService): boolean {
+    // A cancelled dialog leaves everything exactly as it was, including the
+    // dirty flag -- the work is still unsaved and the close warning must
+    // still fire.
+    if (!outcome.saved) return false;
+
+    this.path = outcome.path;
+    this.summary = outcome.summary;
+    this.saveNote = outcome.note;
+    this.dirty = false;
+    this.#refreshHostFacts(service);
+
+    if (outcome.path) this.#remember(outcome.path);
     return true;
   }
 
-  #applyReport(report: SaveReport): void {
-    this.path = report.path;
-    this.summary = report.summary;
-    this.saveNote = report.reason;
-    this.dirty = false;
-    this.#remember(report.path);
+  /**
+   * Re-reads what the host can do.
+   *
+   * Not fixed at startup, because on the web it changes: a document opened
+   * through a file input cannot be saved back to, and one opened through the
+   * File System Access API can. The status bar has to follow.
+   */
+  #refreshHostFacts(service: DocumentService): void {
+    this.limitations = service.limitations;
+    this.savesInPlace = service.canSaveInPlace(this.#editable());
   }
 
-  /**
-   * Whether it is safe to discard this document.
-   *
-   * Asked before closing and before opening another file. The dialog is
-   * native, and its default is the safe answer.
-   */
   async confirmDiscard(): Promise<boolean> {
     if (!this.dirty) return true;
-    if (!isDesktop()) return confirm(`${this.name} has unsaved changes. Discard them?`);
-
-    const { ask } = await import("@tauri-apps/plugin-dialog");
-    return ask(`${this.name} has unsaved changes. Discard them?`, {
-      title: "Unsaved changes",
-      kind: "warning",
-      okLabel: "Discard",
-      cancelLabel: "Cancel",
-    });
+    const service = await documentService();
+    return service.confirmDiscard(this.name);
   }
 }
 

@@ -18,8 +18,8 @@
 //! happens at this boundary and nowhere else.
 
 use easy_usfm_core::{
-    ByteSpan, Char16, Char16Range, Resolution, Session as CoreSession, Severity, TokenKind,
-    Utf16Mapper, Version,
+    ByteSpan, Char16, Char16Range, Eol, LineEndings, Resolution, Session as CoreSession, Severity,
+    TokenKind, Utf16Mapper, Version,
 };
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
@@ -35,6 +35,102 @@ pub fn start() {
 #[wasm_bindgen]
 pub fn version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
+}
+
+// -------------------------------------------------------------- fidelity ---
+
+/// A file as the editor gets it, plus everything its bytes carried that the
+/// text does not.
+///
+/// The desktop shell reads this off the file in native Rust. The browser has
+/// no such shell — but it has the same engine, and FILE-FIDELITY's guarantees
+/// are not a desktop feature. Sharing the implementation is what makes "the
+/// same lifecycle in a browser" true rather than approximately true: a file
+/// opened on the web and saved unchanged produces the same bytes it would on
+/// the desktop, BOM and per-line endings included.
+#[derive(Debug, Serialize)]
+pub struct WireLoaded {
+    /// BOM removed, every terminator turned into `\n`.
+    pub text: String,
+    pub bom: bool,
+    /// One entry per newline, so the editor can map them through edits.
+    pub eols: Vec<Eol>,
+    /// The dominant ending, for the status bar.
+    pub eol: String,
+    pub final_newline: bool,
+    pub mixed_eol: bool,
+    pub len: u32,
+}
+
+/// The starting point for a new document, so both shells give the same one.
+#[wasm_bindgen(js_name = newDocument)]
+pub fn new_document() -> String {
+    easy_usfm_core::NEW_DOCUMENT.to_string()
+}
+
+/// Reads a file's envelope, and returns the text with it removed.
+///
+/// Fails on bytes that are not UTF-8 rather than replacing them: FILE-FIDELITY
+/// §1 has the editor preserve a file exactly, and a lossy decode makes that
+/// impossible before the user has typed anything.
+#[wasm_bindgen(js_name = decodeFile)]
+pub fn decode_file(bytes: &[u8]) -> Result<JsValue, JsValue> {
+    let loaded = easy_usfm_core::FileFidelity::capture(bytes)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+
+    let newlines = loaded.text.matches('\n').count();
+    Ok(to_js(&WireLoaded {
+        bom: loaded.fidelity.bom,
+        eols: loaded.fidelity.eol.per_line(newlines),
+        eol: match loaded.fidelity.eol.dominant() {
+            Eol::Lf => "lf",
+            Eol::Crlf => "crlf",
+            Eol::Cr => "cr",
+        }
+        .to_string(),
+        mixed_eol: loaded.fidelity.eol.is_mixed(),
+        final_newline: loaded.fidelity.final_newline,
+        len: loaded.fidelity.len as u32,
+        text: loaded.text,
+    }))
+}
+
+/// Puts the envelope back on, producing the bytes to write.
+///
+/// `eols` is one terminator per newline, as the editor has mapped them through
+/// every edit since the file was opened.
+#[wasm_bindgen(js_name = encodeFile)]
+pub fn encode_file(text: &str, bom: bool, eols: JsValue) -> Result<Vec<u8>, JsValue> {
+    let eols: Vec<Eol> = serde_wasm_bindgen::from_value(eols)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+
+    // A file with no recorded endings is a new document. LF is the only
+    // defensible default: it is what the corpus uses throughout, and guessing
+    // the host platform's convention would make the same document save
+    // differently depending on who opened it.
+    let endings = if eols.is_empty() {
+        LineEndings::Uniform(Eol::Lf)
+    } else if eols.iter().all(|eol| *eol == eols[0]) {
+        LineEndings::Uniform(eols[0])
+    } else {
+        let dominant = eols[0];
+        LineEndings::Mixed {
+            per_line: eols,
+            dominant,
+        }
+    };
+
+    let fidelity = easy_usfm_core::FileFidelity {
+        bom,
+        eol: endings,
+        final_newline: text.ends_with('\n'),
+        // Neither is read by `serialize`; they describe the bytes that were
+        // read, and this is producing bytes to write.
+        original_hash: [0; 32],
+        len: 0,
+    };
+
+    Ok(fidelity.serialize(text))
 }
 
 // ------------------------------------------------------------- payloads ---

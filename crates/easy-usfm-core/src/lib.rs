@@ -70,5 +70,17 @@ pub use version::Version;
 mod checksum;
 mod token;
 
+/// The starting point for a new document (PRODUCT 6.3).
+///
+/// Here rather than in either shell because there are two of them, and a
+/// second copy is a second answer to "what does New give me" that depends on
+/// whether you opened the desktop application or the web one.
+///
+/// The book code is deliberately a placeholder: PRODUCT 6.3 puts the cursor
+/// after it and expects the book-code diagnostic to fire immediately, which
+/// is the intended teaching moment.
+pub const NEW_DOCUMENT: &str =
+    "\\id XXA\n\\h \n\\toc1 \n\\toc2 \n\\toc3 \n\\mt1 \n\\c 1\n\\p\n\\v 1 \n";
+
 pub use checksum::checksum;
 pub use token::{Token, TokenKind};

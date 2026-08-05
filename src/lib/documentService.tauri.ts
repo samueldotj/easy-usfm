@@ -1,0 +1,132 @@
+/**
+ * The desktop half of {@link DocumentService}.
+ *
+ * Every Tauri import here is dynamic, so a browser build never fetches this
+ * module's dependencies — the bundler splits them out and nothing loads them.
+ *
+ * All the real work is in `easy-usfm-tauri`: the save ladder, the fidelity
+ * envelope, the recent-files menu. This is the wire between that and the
+ * interface, and it deliberately holds no logic of its own — a rule that
+ * matters because the web implementation *does* hold logic, and any behaviour
+ * that lived here would be behaviour the two shells disagree on.
+ */
+
+import type { DocumentService, Editable, Opened, SaveOutcome, Summary } from "./documentService";
+import type { Eol } from "./eol";
+
+interface NativeOpened {
+  id: number;
+  path: string | null;
+  text: string;
+  summary: Summary;
+  eols: Eol[];
+}
+
+interface NativeSave {
+  path: string;
+  summary: Summary;
+  note: string | null;
+}
+
+async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  const { invoke: call } = await import("@tauri-apps/api/core");
+  return call<T>(command, args);
+}
+
+export function tauriDocuments(): DocumentService {
+  return {
+    limitations: [],
+
+    async createNew(): Promise<Opened> {
+      return invoke<NativeOpened>("new_document");
+    },
+
+    async open(path?: string): Promise<Opened | null> {
+      let chosen = path;
+      if (!chosen) {
+        const { open } = await import("@tauri-apps/plugin-dialog");
+        const picked = await open({
+          multiple: false,
+          directory: false,
+          filters: [{ name: "USFM", extensions: ["usfm", "sfm", "SFM", "USFM"] }],
+        });
+        if (typeof picked !== "string") return null;
+        chosen = picked;
+      }
+      return invoke<NativeOpened>("open_document", { path: chosen });
+    },
+
+    canSaveInPlace(document: Editable): boolean {
+      return document.id !== null && document.path !== null;
+    },
+
+    /**
+     * Saves in place.
+     *
+     * A read-only target is not an error. FILE-FIDELITY §2's third rung is to
+     * refuse and offer Save As, and that is what the message means — so it is
+     * turned back into a Save As here rather than surfacing as a failure the
+     * user has to interpret.
+     */
+    async save(document: Editable): Promise<SaveOutcome> {
+      if (document.id === null) return notSaved();
+      if (!document.path) return this.saveAs(document);
+
+      try {
+        const report = await invoke<NativeSave>("save_document", {
+          request: { id: document.id, text: document.text, eols: document.eols },
+          path: null,
+        });
+        return { ...report, saved: true };
+      } catch (error) {
+        if (String(error).includes("READONLY:")) return this.saveAs(document);
+        throw error;
+      }
+    },
+
+    async saveAs(document: Editable): Promise<SaveOutcome> {
+      if (document.id === null) return notSaved();
+
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      const chosen = await save({
+        defaultPath: document.path ?? "untitled.usfm",
+        filters: [{ name: "USFM", extensions: ["usfm", "sfm"] }],
+      });
+      if (typeof chosen !== "string") return notSaved();
+
+      const report = await invoke<NativeSave>("save_document", {
+        request: { id: document.id, text: document.text, eols: document.eols },
+        path: chosen,
+      });
+      return { ...report, saved: true };
+    },
+
+    async confirmDiscard(name: string): Promise<boolean> {
+      const { ask } = await import("@tauri-apps/plugin-dialog");
+      return ask(`${name} has unsaved changes. Discard them?`, {
+        title: "Unsaved changes",
+        kind: "warning",
+        okLabel: "Discard",
+        cancelLabel: "Cancel",
+      });
+    },
+
+    async setRecentFiles(paths: string[]): Promise<void> {
+      try {
+        await invoke("set_recent_files", { paths });
+      } catch {
+        // A menu that failed to rebuild is not worth interrupting anyone over;
+        // every command in it is still reachable by its accelerator.
+      }
+    },
+  };
+}
+
+function notSaved(): SaveOutcome {
+  return {
+    path: null,
+    summary: { encoding: "UTF-8", eol: "lf", bom: false, final_newline: true, mixed_eol: false },
+    note: null,
+    saved: false,
+  };
+}

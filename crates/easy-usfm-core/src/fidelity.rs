@@ -104,6 +104,26 @@ impl LineEndings {
         }
     }
 
+    /// The terminators, expanded to one entry per newline in the text.
+    ///
+    /// The form both shells hand to the editor, which then maps them through
+    /// every edit (P1.4). Kept here rather than in either shell because there
+    /// are two of them — desktop and web — and a second copy of this is a
+    /// second chance for a file's line endings to come back different.
+    ///
+    /// Padding a short list with the dominant ending is what makes a *new*
+    /// line inherit the file's convention rather than an arbitrary default.
+    pub fn per_line(&self, newlines: usize) -> Vec<Eol> {
+        match self {
+            Self::Uniform(eol) => vec![*eol; newlines],
+            Self::Mixed { per_line, dominant } => {
+                let mut out = per_line.clone();
+                out.resize(newlines, *dominant);
+                out
+            }
+        }
+    }
+
     pub fn is_mixed(&self) -> bool {
         matches!(self, Self::Mixed { .. })
     }

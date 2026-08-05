@@ -41,6 +41,8 @@
 
   const lines = $derived(doc.text.split("\n").length);
   const counts = $derived(engine.counts);
+  /** The host's limitations, as one tooltip. Blank-line separated to read. */
+  const limitations = $derived(doc.limitations.join("\n\n"));
 
   /**
    * The editor is told about diagnostics as they arrive.
@@ -348,6 +350,17 @@
     {/if}
     <span>{engine.version ? `Engine ${engine.version}` : "Engine loading…"}</span>
     {#if doc.saveNote}<span class="note">Saved via {doc.saveNote}</span>{/if}
+    {#if doc.limitations.length > 0}
+      <!-- What this host cannot do, said plainly. An editor that appears to
+           save and does not is the worst failure available to it, so the
+           browser build says so before it is relied on. -->
+      <!-- One label whatever the host can do, because the alternative
+           overclaims: a *new* document has no handle yet even in a browser
+           that can save in place, so keying the wording on `savesInPlace`
+           says "downloads a copy" about a Save that is about to write a real
+           file. The tooltip carries what is actually true. -->
+      <span class="limits" title={limitations}>Browser limits</span>
+    {/if}
     <span>{doc.dirty ? "Unsaved changes" : "Saved"}</span>
   </footer>
 </div>
@@ -378,6 +391,11 @@
 
   .note {
     color: var(--accent);
+  }
+
+  .limits {
+    color: var(--severity-warning);
+    cursor: help;
   }
 
   .reference {
