@@ -1,66 +1,37 @@
 <script lang="ts">
   import { doc } from "../lib/document.svelte";
+  import { isDesktop } from "../lib/shell";
   import ThemeSelect from "./ThemeSelect.svelte";
 
   interface Props {
     onnew: () => void;
     onopen: (path?: string) => void;
     onsave: () => void;
-    onsaveas: () => void;
   }
 
-  let { onnew, onopen, onsave, onsaveas }: Props = $props();
-  let recentOpen = $state(false);
+  let { onnew, onopen, onsave }: Props = $props();
 
-  const shortName = (path: string) => path.split(/[/\\]/).pop() ?? path;
+  // On the desktop the file commands live in the native menu, where someone
+  // who has used Windows for twenty years looks for them (PRODUCT §4). The
+  // toolbar keeps only what a menu cannot show at a glance: which file is
+  // open, and whether it has unsaved work.
+  //
+  // The browser build has no menu bar to put them in, so it keeps the buttons.
+  const desktop = isDesktop();
 </script>
 
-<!--
-  A compact toolbar (PRODUCT §4). Native menus per platform are P6.1; these are
-  the same commands, reachable now, with the platform shortcuts already bound
-  in App.svelte so the muscle memory is correct from the start.
--->
 <header>
   <span class="name" title={doc.path ?? "Not saved yet"}>
     {doc.name}{#if doc.dirty}<span class="dirty" aria-label="Unsaved changes">•</span>{/if}
   </span>
 
-  <nav aria-label="File">
-    <button onclick={onnew}>New</button>
-    <button onclick={() => onopen()}>Open…</button>
-
-    <div class="recent">
-      <button
-        aria-haspopup="menu"
-        aria-expanded={recentOpen}
-        disabled={doc.recent.length === 0}
-        onclick={() => (recentOpen = !recentOpen)}
-      >
-        Recent
-      </button>
-      {#if recentOpen}
-        <ul role="menu">
-          {#each doc.recent as path (path)}
-            <li role="none">
-              <button
-                role="menuitem"
-                title={path}
-                onclick={() => {
-                  recentOpen = false;
-                  onopen(path);
-                }}
-              >
-                {shortName(path)}
-              </button>
-            </li>
-          {/each}
-        </ul>
-      {/if}
-    </div>
-
-    <button onclick={onsave} disabled={!doc.dirty && doc.path !== null}>Save</button>
-    <button onclick={onsaveas}>Save As…</button>
-  </nav>
+  {#if !desktop}
+    <nav aria-label="File">
+      <button onclick={onnew}>New</button>
+      <button onclick={() => onopen()}>Open…</button>
+      <button onclick={onsave} disabled={!doc.dirty && doc.path !== null}>Save</button>
+    </nav>
+  {/if}
 
   <div class="spacer"></div>
   <ThemeSelect />
@@ -82,7 +53,7 @@
   .name {
     font-weight: 600;
     color: var(--text);
-    max-inline-size: 22ch;
+    max-inline-size: 40ch;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -118,30 +89,6 @@
   button:disabled {
     color: var(--text-muted);
     cursor: default;
-  }
-
-  .recent {
-    position: relative;
-  }
-
-  ul {
-    position: absolute;
-    inset-block-start: calc(100% + 2px);
-    inset-inline-start: 0;
-    z-index: 10;
-    margin: 0;
-    padding: 0.2rem;
-    list-style: none;
-    min-inline-size: 14rem;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    box-shadow: 0 4px 14px rgb(0 0 0 / 0.18);
-  }
-
-  ul button {
-    inline-size: 100%;
-    text-align: start;
   }
 
   .spacer {

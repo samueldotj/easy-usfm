@@ -11,6 +11,7 @@
 
 pub mod document;
 pub mod fs;
+pub mod menu;
 pub mod save;
 
 use document::Documents;
@@ -32,8 +33,15 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(Documents::default())
+        .setup(|app| {
+            // Empty to begin with; the interface pushes its recent list once
+            // it has read its settings.
+            menu::install(app.handle(), &[])?;
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             engine_version,
+            menu::set_recent_files,
             document::new_document,
             document::open_document,
             document::save_document,

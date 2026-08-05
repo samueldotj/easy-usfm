@@ -94,6 +94,30 @@ class DocumentState {
       RECENT_LIMIT,
     );
     write(RECENT_KEY, this.recent);
+    void this.pushRecentToMenu();
+  }
+
+  /**
+   * Pushes the recent list into the native menu.
+   *
+   * The list lives in settings, which the shell cannot read, so Open Recent
+   * would otherwise be permanently empty. Called on startup and whenever the
+   * list changes.
+   */
+  async pushRecentToMenu(): Promise<void> {
+    if (!isDesktop()) return;
+    try {
+      await invoke("set_recent_files", { paths: this.recent });
+    } catch {
+      // A menu that failed to rebuild is not worth interrupting anyone over;
+      // every command in it is still reachable by its accelerator.
+    }
+  }
+
+  clearRecent(): void {
+    this.recent = [];
+    write(RECENT_KEY, this.recent);
+    void this.pushRecentToMenu();
   }
 
   /** Records an edit. Called from the editor's update listener. */

@@ -7,6 +7,7 @@
   import { doc } from "./lib/document.svelte";
   import { engine } from "./lib/engine.svelte";
   import { isDesktop } from "./lib/shell";
+  import { theme, type Theme } from "./lib/theme.svelte";
 
   let editor: Editor | undefined = $state();
   let error = $state<string | null>(null);
@@ -21,8 +22,58 @@
     // the text explicitly rather than relying on the prop it was mounted with.
     editor?.load(doc.text);
     engine.open(doc.text);
-    if (isDesktop()) await guardTheWindow();
+
+    if (isDesktop()) {
+      await guardTheWindow();
+      await listenToMenu();
+      // The shell starts with an empty Open Recent; the list lives here.
+      await doc.pushRecentToMenu();
+    }
   });
+
+  /**
+   * The native menu bar is another way to ask for the same commands.
+   *
+   * One listener with the item's id as the payload, so adding an item to the
+   * menu does not mean adding a listener here — and so the menu can never
+   * drift into being a second implementation of anything.
+   */
+  async function listenToMenu(): Promise<void> {
+    const { listen } = await import("@tauri-apps/api/event");
+
+    await listen<string>("menu", async (event) => {
+      const id = event.payload;
+
+      if (id.startsWith("recent:")) {
+        const path = id.slice("recent:".length);
+        if (path === "clear") doc.clearRecent();
+        else if (path !== "none") await load(() => doc.open(path));
+        return;
+      }
+      if (id.startsWith("theme:")) {
+        theme.set(id.slice("theme:".length) as Theme);
+        return;
+      }
+
+      switch (id) {
+        case "new":
+          await load(() => doc.createNew());
+          break;
+        case "open":
+          await load(() => doc.open());
+          break;
+        case "save":
+          await run(() => doc.save());
+          break;
+        case "save-as":
+          await run(() => doc.saveAs());
+          break;
+        case "focus-editor":
+          editor?.focus();
+          break;
+      }
+    });
+  }
 
   // Separate from onMount, which cannot return a cleanup when it is async.
   onDestroy(() => engine.stop());
@@ -65,7 +116,16 @@
     });
   }
 
+  /**
+   * Shortcuts for the browser build only.
+   *
+   * On the desktop these are the menu's accelerators, declared beside the
+   * items so the menu shows the key that actually works. Handling them here as
+   * well would fire every command twice.
+   */
   function onKeyDown(event: KeyboardEvent): void {
+    if (isDesktop()) return;
+
     // Ctrl on Windows and Linux, Command on macOS (PRODUCT §7).
     const accel = event.ctrlKey || event.metaKey;
 
@@ -100,7 +160,6 @@
     onnew={() => void load(() => doc.createNew())}
     onopen={(path) => void load(() => doc.open(path))}
     onsave={() => void run(() => doc.save())}
-    onsaveas={() => void run(() => doc.saveAs())}
   />
 
   {#if error}
