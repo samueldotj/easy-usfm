@@ -102,6 +102,13 @@ pub struct WireVersion {
     pub assumed: String,
 }
 
+/// One search hit, in the coordinates the editor selects in.
+#[derive(Debug, Serialize)]
+pub struct WireMatch {
+    pub start: u32,
+    pub end: u32,
+}
+
 /// What came of looking up a reference.
 ///
 /// The failure carries a sentence rather than a code, because every one of
@@ -326,6 +333,39 @@ impl Session {
         };
 
         to_js(&answer)
+    }
+
+    /// Every match for `query`, in Char16 ranges.
+    ///
+    /// `exact` selects the byte-for-byte search instead of the normalized one
+    /// (UNICODE §4). The default — normalized — is what makes a query typed on
+    /// an NFC keyboard find NFD text that is visibly on screen, which UNICODE
+    /// §4 calls the most infuriating bug this class of application can have.
+    ///
+    /// Only positions cross. The replacement itself is applied by the editor,
+    /// because the buffer is authoritative (ADR-003) and an engine that edited
+    /// the document directly would be a second writer to it.
+    pub fn find(&self, query: &str, exact: bool) -> JsValue {
+        let source = self.inner.source();
+
+        let spans = if exact {
+            self.inner.find_exact(query)
+        } else {
+            self.inner.find(query)
+        };
+
+        let matches: Vec<WireMatch> = spans
+            .iter()
+            .map(|span| {
+                let range = self.to_char16(source, span);
+                WireMatch {
+                    start: range.start.get(),
+                    end: range.end.get(),
+                }
+            })
+            .collect();
+
+        to_js(&matches)
     }
 
     /// The marker list for a `\` (PRODUCT §6).

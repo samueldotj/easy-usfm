@@ -559,6 +559,39 @@ impl Session {
             .collect()
     }
 
+    /// Every occurrence of `query`, comparing bytes rather than characters.
+    ///
+    /// UNICODE §4 gives Find a **Match exact byte sequence** toggle, off by
+    /// default. It exists because the normalized search is the right default
+    /// and the wrong tool for one real job: finding out *which* spelling a
+    /// file actually uses. Someone auditing a file for mixed normalization
+    /// needs a search that distinguishes the two, and the whole point of the
+    /// default is that it does not.
+    ///
+    /// Scanned over the whole source rather than per chunk, which the
+    /// normalized path cannot do. There is no index to keep chunk-scoped here,
+    /// so a match spanning a chapter boundary is found — a small way in which
+    /// the exact search is the more literal of the two.
+    pub fn find_exact(&self, query: &str) -> Vec<ByteSpan> {
+        if query.is_empty() {
+            return Vec::new();
+        }
+
+        let mut spans = Vec::new();
+        let mut from = 0usize;
+        while let Some(offset) = self.source[from..].find(query) {
+            let start = from + offset;
+            spans.push(ByteSpan::new(start, start + query.len()));
+            // Past this match: overlapping hits are not what anyone means by
+            // "find the next one".
+            from = start + query.len().max(1);
+            if from >= self.source.len() {
+                break;
+            }
+        }
+        spans
+    }
+
     /// Whether every chunk is already NFC. `false` is what `USFM-I021`
     /// reports.
     pub fn is_normalized(&self) -> bool {

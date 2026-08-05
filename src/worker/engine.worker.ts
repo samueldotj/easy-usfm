@@ -16,6 +16,7 @@ import init, { Session, version } from "../generated/wasm/easy_usfm_wasm";
 import wasmUrl from "../generated/wasm/easy_usfm_wasm_bg.wasm?url";
 import type {
   Completion,
+  Match,
   ParseResult,
   Request,
   Resolution,
@@ -77,6 +78,16 @@ self.onmessage = (event: MessageEvent<Request>) => {
           kind: "resolved",
           rev: request.rev,
           result: session.resolve(request.text) as Resolution,
+        });
+        break;
+      }
+
+      case "find": {
+        if (!session) return;
+        reply({
+          kind: "found",
+          rev: request.rev,
+          matches: session.find(request.query, request.exact) as Match[],
         });
         break;
       }

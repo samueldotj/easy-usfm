@@ -10,6 +10,7 @@ import { DeltaBuffer, type Batch } from "./delta";
 import type {
   Completion,
   Diagnostic,
+  Match,
   Edit,
   ParseResult,
   Request,
@@ -19,7 +20,7 @@ import type {
   UsfmVersion,
 } from "../worker/protocol";
 
-export type { Completion, Diagnostic, Resolution, UsfmVersion } from "../worker/protocol";
+export type { Completion, Diagnostic, Match, Resolution, UsfmVersion } from "../worker/protocol";
 
 /** How long typing must stop before the mirror is verified. */
 const IDLE_MS = 400;
@@ -124,6 +125,8 @@ export class Engine {
   #pending = new Map<number, (result: Resolution) => void>();
   /** Completion requests in flight, likewise. */
   #asking = new Map<number, (offers: Completion[]) => void>();
+  /** Searches in flight, likewise. */
+  #searching = new Map<number, (matches: Match[]) => void>();
 
   /**
    * Connects to the engine.
@@ -246,6 +249,26 @@ export class Engine {
   }
 
   /**
+   * Every match for `query`.
+   *
+   * Positions only. The replacement is applied by the editor, because the
+   * buffer is authoritative (ADR-003) and the delta protocol carries the edit
+   * back here like any other — an engine that rewrote the document itself
+   * would be a second writer to it.
+   */
+  find(query: string, exact: boolean): Promise<Match[]> {
+    return new Promise((settle) => {
+      if (!this.ready || query === "") {
+        settle([]);
+        return;
+      }
+      const rev = this.#next();
+      this.#searching.set(rev, settle);
+      this.#send({ kind: "find", rev, query, exact });
+    });
+  }
+
+  /**
    * The marker list for a backslash at `at`.
    *
    * The engine ranks; the editor filters as the name is typed. Ranking needs
@@ -349,6 +372,8 @@ export class Engine {
     // whole of what it can say. The popup simply does not appear.
     for (const settle of this.#asking.values()) settle([]);
     this.#asking.clear();
+    for (const settle of this.#searching.values()) settle([]);
+    this.#searching.clear();
   }
 
   #next(): number {
@@ -404,6 +429,13 @@ export class Engine {
         const settle = this.#asking.get(response.rev);
         this.#asking.delete(response.rev);
         settle?.(response.completions);
+        return;
+      }
+
+      case "found": {
+        const settle = this.#searching.get(response.rev);
+        this.#searching.delete(response.rev);
+        settle?.(response.matches);
         return;
       }
 

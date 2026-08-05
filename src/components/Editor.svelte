@@ -177,14 +177,50 @@
    * somewhere is visible -- landing a bare cursor in the middle of a screen of
    * text says nothing about whether anything happened.
    */
-  export function reveal(from: number, to: number): void {
+  export function reveal(from: number, to: number, focus = true): void {
     if (!view) return;
     const length = view.state.doc.length;
     view.dispatch({
       selection: { anchor: Math.min(from, length), head: Math.min(to, length) },
       scrollIntoView: true,
     });
-    view.focus();
+    // Not while the find bar is being used: stealing focus on every step would
+    // mean the next keystroke went into the document rather than the query.
+    if (focus) view.focus();
+  }
+
+  /**
+   * Replaces one range with text, inserted exactly as typed.
+   *
+   * UNICODE §4: "Replace *insertion* text — exactly as typed, not normalized
+   * to match surroundings." The temptation is to make the replacement match
+   * the spelling of the text around it, and it is wrong: the user typed what
+   * they typed, and silently respelling it is the editor deciding what the
+   * file should contain.
+   */
+  export function replaceRange(from: number, to: number, text: string): void {
+    view?.dispatch({
+      changes: { from, to, insert: text },
+      selection: { anchor: from + text.length },
+      scrollIntoView: true,
+    });
+  }
+
+  /**
+   * Replaces every range, in one transaction.
+   *
+   * One transaction rather than a loop: CodeMirror maps a set of changes
+   * against the *original* document, so the offsets stay the ones the engine
+   * reported. Applying them one at a time would need every later position
+   * shifted by hand, which is arithmetic with no reason to be correct.
+   *
+   * It is also one undo step, which is what "replace all" means.
+   */
+  export function replaceAll(ranges: { from: number; to: number }[], text: string): void {
+    if (!view || ranges.length === 0) return;
+    view.dispatch({
+      changes: ranges.map((range) => ({ from: range.from, to: range.to, insert: text })),
+    });
   }
 
   /**

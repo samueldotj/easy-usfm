@@ -89,6 +89,8 @@ export type Request =
   | { kind: "where"; rev: number; at: number }
   /** The marker list for a backslash at `at`. */
   | { kind: "completions"; rev: number; at: number }
+  /** Every match for `query`. `exact` selects the byte-for-byte search. */
+  | { kind: "find"; rev: number; query: string; exact: boolean }
   /** The *engine's* version, which is a different question entirely. */
   | { kind: "version"; rev: number };
 
@@ -104,6 +106,12 @@ export interface Resolution {
   start: number | null;
   end: number | null;
   message: string | null;
+}
+
+/** One search hit, in the coordinates the editor selects in. */
+export interface Match {
+  start: number;
+  end: number;
 }
 
 /** One marker the editor may offer. Ranked by the engine, filtered by the editor. */
@@ -137,6 +145,7 @@ export type Response =
   | { kind: "resolved"; rev: number; result: Resolution }
   | { kind: "where"; rev: number; reference: string | null }
   | { kind: "completions"; rev: number; completions: Completion[] }
+  | { kind: "found"; rev: number; matches: Match[] }
   | { kind: "version"; rev: number; version: string }
   /**
    * The worker could not apply what it was sent and its mirror is no longer

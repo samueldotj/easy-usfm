@@ -93,6 +93,30 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, recent: &[String]) -> tauri::Result
         .item(&PredefinedMenuItem::paste(app, Some("&Paste"))?)
         .separator()
         .item(&PredefinedMenuItem::select_all(app, Some("Select &All"))?)
+        .separator()
+        // Find is ours rather than predefined: the search runs against the
+        // engine's normalized index, so the webview's own find would answer a
+        // different question (UNICODE §4).
+        .item(
+            &MenuItemBuilder::with_id("find", "&Find…")
+                .accelerator("CmdOrCtrl+F")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("replace", "&Replace…")
+                .accelerator("CmdOrCtrl+H")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("find-next", "Find &Next")
+                .accelerator("F3")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("find-previous", "Find &Previous")
+                .accelerator("Shift+F3")
+                .build(app)?,
+        )
         .build()?;
 
     let view = SubmenuBuilder::new(app, "&View")

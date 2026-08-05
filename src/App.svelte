@@ -3,6 +3,7 @@
 
   import DiagnosticsPanel from "./components/DiagnosticsPanel.svelte";
   import Editor from "./components/Editor.svelte";
+  import FindBar from "./components/FindBar.svelte";
   import GoToReference from "./components/GoToReference.svelte";
   import SplitPane from "./components/SplitPane.svelte";
   import Toolbar from "./components/Toolbar.svelte";
@@ -14,6 +15,7 @@
 
   let editor: Editor | undefined = $state();
   let goto: GoToReference | undefined = $state();
+  let find: FindBar | undefined = $state();
   let error = $state<string | null>(null);
   let panelOpen = $state(true);
 
@@ -120,6 +122,18 @@
         case "go-to-reference":
           goto?.open();
           break;
+        case "find":
+          find?.show(false);
+          break;
+        case "replace":
+          find?.show(true);
+          break;
+        case "find-next":
+          find?.step(true);
+          break;
+        case "find-previous":
+          find?.step(false);
+          break;
       }
     });
   }
@@ -188,6 +202,11 @@
       editor?.step(!event.shiftKey);
       return;
     }
+    if (event.key === "F3") {
+      event.preventDefault();
+      find?.step(!event.shiftKey);
+      return;
+    }
     if (!accel) return;
 
     // Ctrl+Shift+M. Checked on `code` rather than `key`, because with Shift
@@ -208,6 +227,14 @@
     }
 
     switch (event.key.toLowerCase()) {
+      case "f":
+        event.preventDefault();
+        find?.show(false);
+        break;
+      case "h":
+        event.preventDefault();
+        find?.show(true);
+        break;
       case "n":
         event.preventDefault();
         void load(() => doc.createNew());
@@ -269,6 +296,19 @@
       {/snippet}
     </SplitPane>
   </main>
+
+  <FindBar
+    bind:this={find}
+    onsearch={(query, exact) => engine.find(query, exact)}
+    onreveal={(match, focus) => editor?.reveal(match.start, match.end, focus)}
+    onreplace={(match, text) => editor?.replaceRange(match.start, match.end, text)}
+    onreplaceall={(all, text) =>
+      editor?.replaceAll(
+        all.map((match) => ({ from: match.start, to: match.end })),
+        text,
+      )}
+    onclose={() => editor?.focus()}
+  />
 
   <GoToReference
     bind:this={goto}
