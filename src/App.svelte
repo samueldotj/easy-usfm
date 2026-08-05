@@ -4,12 +4,14 @@
   import DiagnosticsPanel from "./components/DiagnosticsPanel.svelte";
   import Editor from "./components/Editor.svelte";
   import FindBar from "./components/FindBar.svelte";
+  import FontNotice from "./components/FontNotice.svelte";
   import GoToReference from "./components/GoToReference.svelte";
   import SplitPane from "./components/SplitPane.svelte";
   import Toolbar from "./components/Toolbar.svelte";
   import VersionPicker from "./components/VersionPicker.svelte";
   import { doc } from "./lib/document.svelte";
   import { engine } from "./lib/engine.svelte";
+  import { fonts } from "./lib/fonts.svelte";
   import { isDesktop } from "./lib/shell";
   import { theme, type Theme } from "./lib/theme.svelte";
 
@@ -63,6 +65,7 @@
     // the text explicitly rather than relying on the prop it was mounted with.
     editor?.load(doc.text);
     engine.open(doc.text);
+    void fonts.inspect(doc.text);
 
     if (isDesktop()) {
       await guardTheWindow();
@@ -143,8 +146,32 @@
   // Separate from onMount, which cannot return a cleanup when it is async.
   onDestroy(() => engine.stop());
 
+  /**
+   * The window title.
+   *
+   * `document.title` is the webview's, which on Windows and Linux is not what
+   * the title bar shows -- the native frame carries the title from the Tauri
+   * configuration, so the file name and the unsaved marker never reached it.
+   * Both are set, because the webview's is what a browser tab shows.
+   */
   $effect(() => {
     document.title = doc.title;
+    if (isDesktop()) void setWindowTitle(doc.title);
+  });
+
+  async function setWindowTitle(title: string): Promise<void> {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    await getCurrentWindow().setTitle(title);
+  }
+
+  /**
+   * Line height follows the document's scripts (UNICODE 7).
+   *
+   * On the root rather than the editor, so the preview and the diagnostics
+   * panel -- which show the same Scripture -- are set the same way.
+   */
+  $effect(() => {
+    document.documentElement.style.setProperty("--line-height", String(fonts.lineHeight));
   });
 
   /** Anything that touches a file can fail; none of it should be silent. */
@@ -164,6 +191,9 @@
     // A new document is not an edit to the old one; the engine gets the whole
     // text rather than a delta it could not make sense of.
     engine.open(doc.text);
+    // Asked per document, not per keystroke: which scripts a file uses is a
+    // property of the file, and typing does not introduce one.
+    void fonts.inspect(doc.text);
   }
 
   /**
@@ -266,6 +296,8 @@
     <p class="error" role="alert">{error}</p>
   {/if}
 
+  <FontNotice notices={fonts.notices} ondismiss={() => fonts.dismiss()} />
+
   <main>
     <SplitPane id="main" startLabel="USFM source" endLabel="Preview">
       {#snippet start()}
@@ -274,6 +306,9 @@
           value={doc.text}
           onchange={(text, changes) => {
             doc.edited(text, changes);
+            // Typing can introduce a script the document did not have, which
+            // changes both the leading and whether there is a font for it.
+            fonts.schedule(text);
             engine.edit(
               changes.map((change) => ({
                 from: change.fromA,
