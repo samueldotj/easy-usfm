@@ -113,7 +113,7 @@
           await run(() => doc.saveAs());
           break;
         case "focus-editor":
-          editor?.focus();
+          cyclePanes(true);
           break;
         case "toggle-diagnostics":
           panelOpen = !panelOpen;
@@ -174,6 +174,36 @@
     document.documentElement.style.setProperty("--line-height", String(fonts.lineHeight));
   });
 
+  /**
+   * F6 moves to the next pane, Shift+F6 to the previous.
+   *
+   * PRODUCT 6.4 calls this "cycle pane focus" and 10 says "F6 cycles"; it
+   * focused the editor and nothing else, which is not a cycle -- pressing it
+   * twice did what pressing it once did, and the diagnostics panel was
+   * reachable only by tabbing through the document.
+   *
+   * The panes are found in the DOM rather than listed here, so a pane that
+   * exists is a pane F6 reaches. The preview arrives with M3 and will join the
+   * cycle by being rendered, not by being added to a list somebody has to
+   * remember.
+   */
+  function cyclePanes(forward: boolean): void {
+    const panes = [...document.querySelectorAll<HTMLElement>("[data-pane]")].filter(
+      // A collapsed panel is not somewhere focus can usefully go.
+      (pane) => pane.offsetParent !== null,
+    );
+    if (panes.length === 0) return;
+
+    const at = panes.findIndex((pane) => pane.contains(document.activeElement));
+    const next = panes[(at + (forward ? 1 : -1) + panes.length) % panes.length];
+
+    // The pane itself is a region, not a control. Focus goes to the thing
+    // inside it that takes keys -- the editor's content, the diagnostics
+    // list -- and falls back to the region only when there is nothing.
+    const target = next?.querySelector<HTMLElement>("[data-pane-focus]") ?? next;
+    target?.focus();
+  }
+
   /** Anything that touches a file can fail; none of it should be silent. */
   async function run(action: () => Promise<unknown>): Promise<void> {
     try {
@@ -226,7 +256,7 @@
 
     if (event.key === "F6") {
       event.preventDefault();
-      editor?.focus();
+      cyclePanes(!event.shiftKey);
       return;
     }
     if (event.key === "F8") {

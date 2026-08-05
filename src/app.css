@@ -41,7 +41,12 @@
   --surface: #ffffff;
   --surface-sunken: #f4f4f5;
   --text: #18181b;
-  --text-muted: #71717a;
+  /* Darker than it looks like it needs to be, because it is not only used on
+     the page. The status bar and the diagnostics panel sit on the *sunken*
+     surface, and against that the obvious zinc-500 measures 4.40 against the
+     4.5 PRODUCT 10 requires -- passing on white and failing where it is
+     actually read. Checked against both surfaces, not the lighter one. */
+  --text-muted: #67676f;
   --border: #d4d4d8;
   --accent: #2563eb;
 
@@ -114,7 +119,7 @@
   --surface: #ffffff;
   --surface-sunken: #f4f4f5;
   --text: #18181b;
-  --text-muted: #71717a;
+  --text-muted: #67676f;
   --border: #d4d4d8;
   --accent: #2563eb;
 

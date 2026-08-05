@@ -91,7 +91,21 @@
 </script>
 
 <div class="split" bind:this={container}>
-  <section class="pane" style="flex-basis: {percent}%" aria-label={startLabel}>
+  <!-- `data-pane` is what F6 cycles over: a pane that exists is a pane F6
+       reaches, rather than one somebody remembered to add to a list.
+
+       `tabindex="-1"` is what makes that work. A section is not focusable, so
+       calling focus() on a pane whose contents are not either does nothing at
+       all -- F6 appeared to be stuck in the editor because moving to the
+       preview silently failed and left focus where it was. -1 keeps it out of
+       the tab order while allowing the programmatic move. -->
+  <section
+    class="pane"
+    data-pane
+    tabindex="-1"
+    style="flex-basis: {percent}%"
+    aria-label={startLabel}
+  >
     {@render start()}
   </section>
 
@@ -124,7 +138,13 @@
     onkeydown={onKeyDown}
   ></div>
 
-  <section class="pane" style="flex-basis: {100 - percent}%" aria-label={endLabel}>
+  <section
+    class="pane"
+    data-pane
+    tabindex="-1"
+    style="flex-basis: {100 - percent}%"
+    aria-label={endLabel}
+  >
     {@render end()}
   </section>
 </div>

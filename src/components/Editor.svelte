@@ -57,12 +57,36 @@
   let host: HTMLDivElement;
   let view: EditorView | undefined;
 
+  /**
+   * The page's CSP nonce, if the host set one.
+   *
+   * Read off an element the host itself stamped rather than from a meta tag we
+   * write, because the nonce has to come from whatever generated the policy --
+   * a nonce the page chose for itself is not a nonce, it is a constant.
+   *
+   * The `nonce` property rather than `getAttribute`: browsers hide the
+   * attribute value from script to stop exactly the exfiltration this is
+   * guarding, and expose it only through the IDL property.
+   */
+  function cspNonce(): string | undefined {
+    const stamped = document.querySelector<HTMLElement>("script[nonce], style[nonce]");
+    return stamped?.nonce || undefined;
+  }
+
   onMount(() => {
     view = new EditorView({
       parent: host,
       state: EditorState.create({
         doc: value,
         extensions: [
+          // CodeMirror injects its structural base theme as a style element,
+          // which is the one thing keeping `'unsafe-inline'` in the CSP
+          // (SECURITY 5). Given a nonce it stamps that element, and the policy
+          // can name the nonce instead. Empty when the host supplies none,
+          // which changes nothing -- so this is safe to have in place before
+          // the policy moves.
+          EditorView.cspNonce.of(cspNonce() ?? ""),
+
           // Before the line numbers, so the glyph column is on the outside and
           // the numbers stay next to the text they count.
           diagnostics,
@@ -98,6 +122,9 @@
           EditorView.contentAttributes.of({
             dir: direction,
             "aria-label": "USFM source",
+            // Where F6 puts focus when it reaches this pane: the element that
+            // takes keys, not the region around it.
+            "data-pane-focus": "",
           }),
           EditorView.perLineTextDirection.of(true),
 

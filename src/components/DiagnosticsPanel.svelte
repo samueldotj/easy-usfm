@@ -122,7 +122,9 @@
   }
 </script>
 
-<section class="panel" class:open aria-label="Diagnostics">
+<!-- `tabindex="-1"` for the collapsed case, where the listbox does not
+     exist and the region itself is where F6 has to land. -->
+<section class="panel" class:open data-pane tabindex="-1" aria-label="Diagnostics">
   <h2>
     <button type="button" onclick={ontoggle} aria-expanded={open} aria-controls="diagnostics-list">
       <span class="chevron" aria-hidden="true">{open ? "▾" : "▸"}</span>
@@ -152,6 +154,7 @@
       class="list"
       role="listbox"
       tabindex="0"
+      data-pane-focus
       aria-label="Diagnostics"
       aria-activedescendant={shown.length > 0 ? `diagnostic-${active}` : undefined}
       bind:this={list}
