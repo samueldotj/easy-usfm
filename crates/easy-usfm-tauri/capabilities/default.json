@@ -7,6 +7,7 @@
   ],
   "permissions": [
     "core:default",
+    "core:window:allow-set-title",
     "dialog:allow-open",
     "dialog:allow-save",
     "dialog:allow-ask",
@@ -27,6 +28,11 @@
     "alternative: a link opened in the webview is a link running in the",
     "application's own origin. The URL is sanitized before it gets here and",
     "the user confirms each one -- the permission grants the mechanism, not",
-    "the decision."
+    "the decision.",
+    "",
+    "`core:window:allow-set-title` puts the file name and the unsaved marker",
+    "in the native title bar. `core:default` does not include it, and the",
+    "call failed silently in the browser build because the desktop branch",
+    "never runs there -- it took running the real application to see."
   ]
 }
