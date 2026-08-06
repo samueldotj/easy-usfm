@@ -41,6 +41,7 @@ mod document;
 mod fidelity;
 pub mod grapheme;
 pub mod invariants;
+pub mod joiners;
 pub mod markers;
 mod node;
 mod normalize;

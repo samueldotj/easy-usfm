@@ -12,6 +12,7 @@
     stepDiagnostic,
   } from "../lib/diagnostics";
   import { markerCompletions, optionClass } from "../lib/complete";
+  import { invisibles, setShowInvisibles } from "../lib/invisibles";
   import { changesOf, type Change } from "../lib/eol";
   import { highlighting, setTokens, tokenRequests } from "../lib/highlight";
   import type { Completion, Diagnostic, Token } from "../worker/protocol";
@@ -31,6 +32,8 @@
     oncursor?: (at: number) => void;
     /** A backslash wants its marker list. */
     oncomplete?: (at: number) => Promise<Completion[]>;
+    /** Show zero-width characters (UNICODE appendix, P3.12). */
+    showInvisibles?: boolean;
   }
 
   let {
@@ -42,6 +45,7 @@
     ontokenrange,
     oncursor,
     oncomplete,
+    showInvisibles = false,
   }: Props = $props();
 
   /**
@@ -116,6 +120,8 @@
           highlighting,
           tokenRequests((from, to) => ontokenrange?.(from, to)),
 
+          invisibles,
+
           // UNICODE §8. Set on the content rather than inherited, because a
           // document beginning `\v 1` auto-detects as left-to-right and would
           // be wrong for an entire right-to-left translation.
@@ -177,6 +183,12 @@
       dom.removeEventListener("compositionend", ended);
       view?.destroy();
     };
+  });
+
+  // The setting lives in editor state, so a change has to be dispatched --
+  // a view plugin is not asked to update when a component's variable moves.
+  $effect(() => {
+    view?.dispatch({ effects: setShowInvisibles.of(showInvisibles) });
   });
 
   /** Focus the editor. Used by F6 pane cycling. */

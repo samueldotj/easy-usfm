@@ -784,6 +784,11 @@ impl Session {
 
         diagnostics.extend(self.verses().diagnostics());
 
+        // Joiners, which are a question about characters rather than about
+        // structure -- by the time there is a tree, a marker with a joiner in
+        // it is simply an unknown marker and the joiner is inside the name.
+        diagnostics.extend(crate::joiners::diagnostics(&self.source));
+
         // USFM-I021. Reported once for the document rather than once per
         // occurrence: the answer is a single command, and a diagnostic on
         // every decomposed character would bury everything else.

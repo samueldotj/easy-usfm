@@ -331,7 +331,7 @@
     float: inline-end; /* lint-logical-ok: `float` has no logical shorthand */
   }
 
-  /* `` is a blank line between stanzas: no text, just the space. */
+  /* The blank-line marker: no text, just the space between stanzas. */
   :global(.usfm-b) {
     margin-block: 0.7rem;
     block-size: 0.4em;

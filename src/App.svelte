@@ -13,6 +13,7 @@
   import { doc } from "./lib/document.svelte";
   import { engine } from "./lib/engine.svelte";
   import { fonts } from "./lib/fonts.svelte";
+  import { hasInvisibles } from "./lib/invisibles";
   import { isDesktop } from "./lib/shell";
   import { theme, type Theme } from "./lib/theme.svelte";
 
@@ -21,6 +22,15 @@
   let find: FindBar | undefined = $state();
   let error = $state<string | null>(null);
   let panelOpen = $state(true);
+  /**
+   * Show zero-width characters (UNICODE appendix).
+   *
+   * "Defaulting to on when the document's script uses them" -- a property of
+   * the file, not of the application, so it is set per document rather than
+   * remembered. A file with none of them gets a clean editor; a file with one
+   * gets to see it, which is the case where it matters.
+   */
+  let showInvisibles = $state(false);
 
   /**
    * Asks the engine, moves the cursor, and reports what to say if it failed.
@@ -90,6 +100,7 @@ ${href}`)) return;
     editor?.load(doc.text);
     engine.open(doc.text);
     void fonts.inspect(doc.text);
+    showInvisibles = hasInvisibles(doc.text);
 
     if (isDesktop()) {
       await guardTheWindow();
@@ -138,6 +149,9 @@ ${href}`)) return;
           break;
         case "focus-editor":
           cyclePanes(true);
+          break;
+        case "toggle-invisibles":
+          showInvisibles = !showInvisibles;
           break;
         case "toggle-diagnostics":
           panelOpen = !panelOpen;
@@ -248,6 +262,7 @@ ${href}`)) return;
     // Asked per document, not per keystroke: which scripts a file uses is a
     // property of the file, and typing does not introduce one.
     void fonts.inspect(doc.text);
+    showInvisibles = hasInvisibles(doc.text);
   }
 
   /**
@@ -295,11 +310,17 @@ ${href}`)) return;
     }
     if (!accel) return;
 
-    // Ctrl+Shift+M. Checked on `code` rather than `key`, because with Shift
-    // held the key a layout reports is not reliably the letter on the cap.
+    // Ctrl+Shift+M and Ctrl+Shift+8. Checked on `code` rather than `key`,
+    // because with Shift held the key a layout reports is not reliably the
+    // one printed on the cap.
     if (event.shiftKey && event.code === "KeyM") {
       event.preventDefault();
       panelOpen = !panelOpen;
+      return;
+    }
+    if (event.shiftKey && event.code === "Digit8") {
+      event.preventDefault();
+      showInvisibles = !showInvisibles;
       return;
     }
 
@@ -377,6 +398,7 @@ ${href}`)) return;
           ontokenrange={(from, to) => engine.requestTokens(from, to)}
           oncursor={(at) => engine.locate(at)}
           oncomplete={(at) => engine.completions(at)}
+          {showInvisibles}
         />
       {/snippet}
 

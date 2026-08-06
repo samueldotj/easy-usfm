@@ -271,3 +271,28 @@
 .cm-editor .cm-diagnostic-glyph.cm-diagnostic-information {
   color: var(--severity-information);
 }
+
+/* ------------------------------------------------------- invisibles ---
+ *
+ * A label beside the character, not in place of it: the character stays where
+ * it is, because every offset in the application depends on that and byte
+ * fidelity is the whole premise (P3.12).
+ *
+ * Small, monospace and dimmed. These appear inside running Scripture and must
+ * be findable without becoming what the eye lands on first.
+ */
+
+.cm-editor .cm-invisible {
+  font-family: var(--font-gutter);
+  font-size: 0.6em;
+  vertical-align: 0.25em;
+  padding-inline: 0.15em;
+  margin-inline: 0.05em;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--syntax-milestone) 30%, transparent);
+  color: var(--text);
+  /* Latin labels inside text of any direction, so they must not reorder it. */
+  unicode-bidi: isolate;
+  direction: ltr;
+  user-select: none;
+}

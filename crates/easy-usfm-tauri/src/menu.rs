@@ -129,6 +129,11 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, recent: &[String]) -> tauri::Result
                 .accelerator("F6")
                 .build(app)?,
         )
+        .item(
+            &MenuItemBuilder::with_id("toggle-invisibles", "Show &Invisible Characters")
+                .accelerator("CmdOrCtrl+Shift+8")
+                .build(app)?,
+        )
         .separator()
         // Ctrl+G on Windows and Linux. macOS wants Cmd+L instead, because
         // Cmd+G is Find Next by universal convention there — P6.1's per-

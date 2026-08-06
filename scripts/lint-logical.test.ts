@@ -53,6 +53,40 @@ describe("banning raw markup", () => {
   });
 });
 
+describe("catching stray control characters", () => {
+  // Built rather than written literally: a fixture containing one would be a
+  // source file containing one, which is the thing being banned.
+  const withControl = (code: number) => `const pattern = /a${String.fromCharCode(code)}b/;`;
+
+  it("catches the ones tooling leaves behind", () => {
+    // A backspace from a mishandled \b, a vertical tab from \v, a form feed
+    // from \f. All three have happened in this repository.
+    expect(markup(withControl(0x08))).toEqual(["control character U+0008"]);
+    expect(markup(withControl(0x0b))).toEqual(["control character U+000B"]);
+    expect(markup(withControl(0x0c))).toEqual(["control character U+000C"]);
+    expect(markup(withControl(0x00))).toEqual(["control character U+0000"]);
+  });
+
+  it("leaves tab, newline and carriage return alone", () => {
+    // The three legitimate ones. Built the same way, so this file stays free
+    // of the characters it is testing for.
+    const TAB = String.fromCharCode(9);
+    const LF = String.fromCharCode(10);
+    const CR = String.fromCharCode(13);
+
+    expect(markup(`const x = 1;${TAB}const y = 2;`)).toEqual([]);
+    expect(markup(`line one${LF}line two`)).toEqual([]);
+    expect(markup(`line one${CR}${LF}line two`)).toEqual([]);
+  });
+
+  it("does not report an escape sequence written correctly", () => {
+    // Note the doubling. In a JavaScript string `"\b"` *is* the backspace,
+    // which is how the character gets into a file in the first place — this
+    // test was written with a single one and the rule caught it.
+    expect(markup("const pattern = /a\\bb/;")).toEqual([]);
+  });
+});
+
 describe("catching physical properties", () => {
   it("flags the directional ones", () => {
     expect(found(".a { margin-left: 1rem; }")).toEqual(["margin-left"]);

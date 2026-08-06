@@ -10,6 +10,14 @@
  * stops being true. USFM files arrive by email and USB from third parties;
  * this is the one realistic attack surface the application has.
  *
+ * # Stray control characters
+ *
+ * A backspace or a vertical tab in a source file is invisible in every editor
+ * and every diff, and it silently changes what the code means -- a regex with
+ * one baked in matches nothing, and a doc comment with one loses a word. They
+ * arrive from tooling that mishandles escape sequences, not from typing, so
+ * nobody looks for them. This has happened here more than once.
+ *
  * # Physical CSS properties
  *
  * UNICODE §8 asks for logical properties throughout — `margin-inline-start`,
@@ -101,13 +109,16 @@ const ALLOW = /\blint-logical-ok\b/;
 /** `width`/`height` on an SVG or a canvas attribute is not CSS. */
 const NOT_CSS = /<(svg|canvas|img|rect|circle|image)\b/;
 
-function* files(directory) {
+function* files(directory, matching = /\.(css|svelte|ts|js|mjs)$/) {
   for (const entry of readdirSync(directory)) {
-    if (entry === "node_modules" || entry === "generated" || entry.startsWith(".")) continue;
+    // `target` is Cargo's output and `generated` is the WASM bindings;
+    // neither is source, and both are large.
+    if (["node_modules", "generated", "target", "corpus"].includes(entry)) continue;
+    if (entry.startsWith(".")) continue;
 
     const path = join(directory, entry);
-    if (statSync(path).isDirectory()) yield* files(path);
-    else if (/\.(css|svelte|ts|js|mjs)$/.test(path)) yield path;
+    if (statSync(path).isDirectory()) yield* files(path, matching);
+    else if (matching.test(path)) yield path;
   }
 }
 
@@ -141,6 +152,18 @@ function* cssLines(source, isCss) {
  * `{@html}` is Svelte's; the DOM's own are worth naming too, since reaching
  * for `innerHTML` gets to the same place without tripping the first rule.
  */
+/**
+ * Characters that should never be in a source file.
+ *
+ * Tab, newline and carriage return are the legitimate ones and are absent.
+ * Everything else in the C0 range, plus DEL, is damage.
+ */
+const CONTROL = new RegExp(
+  "[" +
+    "\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f\\u007f" +
+    "]",
+);
+
 const RAW_MARKUP = [
   [/\{@html\b/, "{@html}"],
   [/\.innerHTML\s*=/, ".innerHTML ="],
@@ -160,6 +183,17 @@ export function checkMarkup(source) {
 
   for (const line of source.split("\n")) {
     number += 1;
+
+    const control = line.match(CONTROL);
+    if (control) {
+      const point = control[0].codePointAt(0).toString(16).toUpperCase().padStart(4, "0");
+      problems.push({
+        number,
+        found: `control character U+${point}`,
+        use: "nothing, delete it",
+        line: line.replace(CONTROL, "?").trim(),
+      });
+    }
 
     // No exemption, deliberately. SECURITY 1's control is that no path
     // exists from document content to markup, and a marker that waved one
@@ -225,6 +259,16 @@ export function scan(root) {
       problems.push({ ...problem, path });
     }
   }
+
+  // The Rust tree too, for control characters. The other two rules are
+  // about CSS and about Svelte, but tooling that mangles an escape
+  // sequence does not care which language it is mangling.
+  for (const path of files(join(root, "crates"), /\.rs$/)) {
+    for (const problem of checkMarkup(readFileSync(path, "utf8"))) {
+      problems.push({ ...problem, path });
+    }
+  }
+
   return problems;
 }
 
@@ -237,8 +281,7 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replaceAll("\\",
     process.exit(0);
   }
 
-  const plural = problems.length === 1 ? "physical property" : "physical properties";
-  console.error(`\n${problems.length} ${plural}:\n`);
+  console.error(`\n${problems.length} problem${problems.length === 1 ? "" : "s"}:\n`);
 
   for (const problem of problems) {
     console.error(`  ${relative(ROOT, problem.path)}:${problem.number}`);
