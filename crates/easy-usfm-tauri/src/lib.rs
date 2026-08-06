@@ -17,6 +17,7 @@ pub mod menu;
 pub mod recovery;
 pub mod reopen;
 pub mod save;
+pub mod updates;
 pub mod watch;
 
 use document::Documents;
@@ -81,6 +82,8 @@ pub fn run() {
             recovery::release_lock,
             watch::watch_document,
             watch::unwatch_document,
+            updates::updates_possible,
+            updates::check_for_update,
         ])
         .run(tauri::generate_context!())
         .expect("the application failed to start");

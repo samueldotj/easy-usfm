@@ -15,6 +15,7 @@
   import SplitPane from "./components/SplitPane.svelte";
   import Toolbar from "./components/Toolbar.svelte";
   import UpdateBar from "./components/UpdateBar.svelte";
+  import UpdatePrompt from "./components/UpdatePrompt.svelte";
   import VersionPicker from "./components/VersionPicker.svelte";
   import { doc } from "./lib/document.svelte";
   import type { FileChanged } from "./lib/documentService";
@@ -25,6 +26,7 @@
   import { hasInvisibles } from "./lib/invisibles";
   import { print } from "./lib/print.svelte";
   import { pwa } from "./lib/pwa.svelte";
+  import { updates } from "./lib/updates.svelte";
   import { ScrollSync, elementFor, scrollTo, topmostOffset, type Pane } from "./lib/scrollsync";
   import { SnapshotSchedule } from "./lib/snapshots";
   import type { LaunchQueueHost } from "./lib/launch";
@@ -400,6 +402,14 @@ ${href}`)) return;
       await listenToMenu();
       // The shell starts with an empty Open Recent; the list lives here.
       await doc.pushRecentToMenu();
+
+      // Whether this build can check for updates at all, and then the first-run
+      // question (PRODUCT 11). Asked after the document is open and only while
+      // nothing is unsaved -- a prompt over somebody's typing is dismissed by
+      // the next keystroke, which is consent nobody gave.
+      const { invoke } = await import("@tauri-apps/api/core");
+      await updates.inspect(invoke);
+      updates.askIfNeeded(doc.dirty);
     }
   });
 
@@ -879,6 +889,7 @@ ${href}`)) return;
   />
 
   <UpdateBar />
+  <UpdatePrompt />
 
   <InsertToolbar oninsert={insert} disabled={doc.readOnly} />
 

@@ -16,6 +16,14 @@ publish = false
 name = "easy_usfm_tauri_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+# The offline variant (PRODUCT 11, SECURITY 6). `--no-default-features`
+# compiles the update check out entirely rather than defaulting a setting to
+# off: a setting is a promise, and a missing code path is a fact. Restricted
+# deployments are exactly the places that need the difference.
+[features]
+default = ["updater"]
+updater = []
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -50,5 +58,8 @@ windows-sys = { version = "0.61", features = [
 
 [dev-dependencies]
 tempfile = "3"
+# The update gate is async, and its tests assert that nothing is sent without
+# consent -- which has to be awaited to be asserted.
+tokio = { version = "1", features = ["macros", "rt"] }
 easy-usfm-core = { path = "../easy-usfm-core" }
 blake3.workspace = true
