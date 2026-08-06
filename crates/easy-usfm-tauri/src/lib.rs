@@ -32,6 +32,9 @@ fn engine_version() -> String {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        // Hands an external link to the OS handler (SECURITY 2). Never the
+        // webview -- a link opened there runs in this application's origin.
+        .plugin(tauri_plugin_opener::init())
         .manage(Documents::default())
         .setup(|app| {
             // Empty to begin with; the interface pushes its recent list once

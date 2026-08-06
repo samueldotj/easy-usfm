@@ -20,21 +20,30 @@
    * A kind this component does not know renders its children anyway. USFM has
    * markers this editor has never heard of and files that predate half of it,
    * and ADR-003 says content survives — so an unhandled kind must lose its
-   * styling, not its Scripture. P3.2 and P3.3 add notes, poetry and tables by
-   * giving those kinds their own arms; until then they render as plain
-   * paragraphs rather than as nothing.
+   * styling, not its Scripture.
    */
 
+  import { sanitizeHref } from "../../lib/href";
   import type { PreviewNode } from "../../worker/protocol";
+  import Note from "./Note.svelte";
   import Self from "./NodeView.svelte";
 
   interface Props {
     node: PreviewNode;
     /** Clicking any node moves the editor cursor there (PRODUCT §7). */
     onselect?: (start: number, end: number) => void;
+    /** Milestones with no partner, which render as a chip (P3.4). */
+    unpaired?: ReadonlySet<PreviewNode>;
+    /** A link the user chose to follow. Never opened in the webview. */
+    onfollow?: (href: string) => void;
+    /** A scripture reference in a link, resolved rather than navigated. */
+    onreference?: (reference: string) => void;
   }
 
-  let { node, onselect }: Props = $props();
+  let { node, onselect, unpaired, onfollow, onreference }: Props = $props();
+
+  /** Everything the recursion passes straight through. */
+  const pass = $derived({ onselect, unpaired, onfollow, onreference });
 
   const attribute = (key: string): string | undefined =>
     node.attributes.find((entry) => entry.key === key)?.value;
@@ -53,20 +62,30 @@
       : "usfm-unknown",
   );
 
-  /**
-   * Where in the source this node is, when the parser recorded it.
-   *
-   * The click stops here. Nodes nest -- a verse sits inside a paragraph, a
-   * character style inside a verse -- so without this the event bubbles to
-   * every ancestor and the outermost handler runs last and wins. Clicking
-   * verse two put the cursor at the top of the paragraph, which reported the
-   * chapter; the innermost node is the one the user aimed at.
-   */
+  /** Where in the source this node is, when the parser recorded it. */
   function select(event: MouseEvent): void {
     if (node.start === null || node.end === null) return;
+    // The click stops here. Nodes nest — a verse sits inside a paragraph, a
+    // character style inside a verse — so without this the event bubbles to
+    // every ancestor and the outermost handler runs last and wins. Clicking
+    // verse two put the cursor at the top of the paragraph, which reported the
+    // chapter; the innermost node is the one the user aimed at.
     event.stopPropagation();
     onselect?.(node.start, node.end);
   }
+
+  /**
+   * A character marker's link target, if it carries one (SECURITY §2).
+   *
+   * `\jmp` is the marker for it, but `link-href` is generic on character
+   * markers, so this asks every one of them rather than only `\jmp`.
+   */
+  const link = $derived.by(() => {
+    const href = node.attributes.find((entry) => entry.key === "link-href")?.value;
+    return href === undefined ? null : sanitizeHref(href);
+  });
+
+  const isUnpaired = $derived(unpaired?.has(node) ?? false);
 </script>
 
 {#if node.kind === "text"}
@@ -97,18 +116,155 @@
     onclick={select}
     role="presentation"
   >{attribute("pubnumber") ?? attribute("number") ?? ""}</span>
+{:else if node.kind === "note"}
+  <Note caller={attribute("caller") ?? "*"} marker={node.marker ?? "f"} onselect={select}>
+    {#each node.children as child, index (index)}
+      <Self node={child} {...pass} />
+    {/each}
+  </Note>
 {:else if node.kind === "para"}
   <p class="usfm-para {marked}" onclick={select} role="presentation">
     {#each node.children as child, index (index)}
-      <Self node={child} {onselect} />
+      <Self node={child} {...pass} />
     {/each}
   </p>
+{:else if node.kind === "char" && link !== null}
+  <!--
+    A link out of a document that arrived from a third party (SECURITY §2).
+    Three outcomes, and only one of them opens anything.
+  -->
+  {#if link.kind === "external"}
+    <button
+      type="button"
+      class="usfm-char usfm-link {marked}"
+      title={link.value}
+      onclick={(event) => {
+        event.stopPropagation();
+        onfollow?.(link.value);
+      }}
+    >
+      {#each node.children as child, index (index)}
+        <Self node={child} {...pass} />
+      {/each}
+    </button>
+  {:else if link.kind === "ref"}
+    <button
+      type="button"
+      class="usfm-char usfm-ref {marked}"
+      title="Go to {link.value}"
+      onclick={(event) => {
+        event.stopPropagation();
+        onreference?.(link.value);
+      }}
+    >
+      {#each node.children as child, index (index)}
+        <Self node={child} {...pass} />
+      {/each}
+    </button>
+  {:else}
+    <!--
+      Not an anchor and not a button: the application does not act on this at
+      all. The text is shown so the reader can see what the file contained,
+      which is more useful than a silently removed link and is the only outcome
+      that tells them their document is odd.
+    -->
+    <span
+      class="usfm-char usfm-inert {marked}"
+      title="This link was not safe to follow: {link.value}"
+    >
+      {#each node.children as child, index (index)}
+        <Self node={child} {...pass} />
+      {/each}
+    </span>
+  {/if}
 {:else if node.kind === "char"}
   <span class="usfm-char {marked}">
     {#each node.children as child, index (index)}
-      <Self node={child} {onselect} />
+      <Self node={child} {...pass} />
     {/each}
   </span>
+{:else if node.kind === "table"}
+  <table class="usfm-table" onclick={select} role="presentation">
+    <tbody>
+      {#each node.children as child, index (index)}
+        <Self node={child} {...pass} />
+      {/each}
+    </tbody>
+  </table>
+{:else if node.kind === "table:row"}
+  <tr class="usfm-row">
+    {#each node.children as child, index (index)}
+      <Self node={child} {...pass} />
+    {/each}
+  </tr>
+{:else if node.kind === "table:cell"}
+  <!--
+    A heading cell is `\th`, a body cell `\tc`. The distinction is in the
+    marker rather than in the kind, which is USJ's model, so it is read from
+    there — a table whose headers were ordinary cells reads as data with no
+    column names.
+
+    `align` arrives from the parser as a logical value already, so it goes
+    straight to `text-align` (UNICODE §8).
+  -->
+  {#if node.marker?.startsWith("th")}
+    <th class="usfm-cell {marked}" style:text-align={attribute("align") ?? "start"}>
+      {#each node.children as child, index (index)}
+        <Self node={child} {...pass} />
+      {/each}
+    </th>
+  {:else}
+    <td class="usfm-cell {marked}" style:text-align={attribute("align") ?? "start"}>
+      {#each node.children as child, index (index)}
+        <Self node={child} {...pass} />
+      {/each}
+    </td>
+  {/if}
+{:else if node.kind === "sidebar"}
+  <!-- `\esb` is an aside in the reading sense as well as the markup one. -->
+  <aside class="usfm-sidebar" onclick={select} role="presentation">
+    {#each node.children as child, index (index)}
+      <Self node={child} {...pass} />
+    {/each}
+  </aside>
+{:else if node.kind === "figure"}
+  <!--
+    Images are off by default (SECURITY §3), so what renders is the caption and
+    what the file asked for. A figure is not decoration in Scripture — it
+    carries a caption and a reference the reader needs — so the placeholder
+    shows those rather than a broken-image box.
+  -->
+  <figure class="usfm-figure" onclick={select} role="presentation">
+    <div class="usfm-figure-frame">
+      <span class="usfm-figure-note">Image not shown</span>
+      {#if attribute("file")}
+        <span class="usfm-figure-src">{attribute("file")}</span>
+      {/if}
+    </div>
+    <figcaption>
+      {#each node.children as child, index (index)}
+        <Self node={child} {...pass} />
+      {/each}
+      {#if attribute("ref")}
+        <span class="usfm-figure-ref">{attribute("ref")}</span>
+      {/if}
+    </figcaption>
+  </figure>
+{:else if node.kind === "ms"}
+  <!--
+    A milestone marks a position and normally renders as nothing — that is what
+    milestones are for. An *unpaired* one is different: PRODUCT §7 says it
+    warns and renders as a chip rather than swallowing the rest of the
+    document, so the reader can see where the markup stops making sense.
+  -->
+  {#if isUnpaired}
+    <span
+      class="usfm-milestone"
+      onclick={select}
+      role="presentation"
+      title="This milestone has no matching partner"
+    >{node.marker}</span>
+  {/if}
 {:else if node.kind === "book"}
   <!-- `\id` is metadata, not Scripture. It belongs in the status bar, and
        showing it at the top of the reading pane would put a book code where
@@ -119,7 +275,7 @@
   <!-- Everything not yet given its own arm: still rendered, still readable. -->
   <span class="usfm-other {marked}">
     {#each node.children as child, index (index)}
-      <Self node={child} {onselect} />
+      <Self node={child} {...pass} />
     {/each}
   </span>
 {/if}

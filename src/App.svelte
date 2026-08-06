@@ -43,6 +43,29 @@
   }
 
   const lines = $derived(doc.text.split("\n").length);
+  /**
+   * Opens a link that came out of a document, outside the application.
+   *
+   * SECURITY 2: never in the webview -- a link opened there is a link running
+   * in this application's own origin, which is the whole thing being defended
+   * against. The URL has already been sanitized; this is the confirmation the
+   * same section asks for, because following a link in a file someone else
+   * sent is a request to that someone's server.
+   */
+  async function followLink(href: string): Promise<void> {
+    if (!confirm(`Open this link outside Easy USFM?
+
+${href}`)) return;
+
+    if (isDesktop()) {
+      const { openUrl } = await import("@tauri-apps/plugin-opener");
+      await openUrl(href);
+      return;
+    }
+    // `noopener` so the opened page cannot reach back through `window.opener`.
+    window.open(href, "_blank", "noopener,noreferrer");
+  }
+
   const counts = $derived(engine.counts);
   /** The host's limitations, as one tooltip. Blank-line separated to read. */
   const limitations = $derived(doc.limitations.join("\n\n"));
@@ -362,6 +385,8 @@
           chunks={engine.chunks}
           previews={engine.previews}
           onselect={(start, end) => editor?.reveal(start, end, false)}
+          onfollow={(href) => void followLink(href)}
+          onreference={(reference) => void goToReference(reference)}
         />
       {/snippet}
     </SplitPane>

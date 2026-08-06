@@ -21,9 +21,56 @@
     previews: (PreviewNode[] | undefined)[];
     /** Clicking a verse moves the editor cursor there (PRODUCT §7). */
     onselect?: (start: number, end: number) => void;
+    /** A link the user chose to follow, opened outside the webview. */
+    onfollow?: (href: string) => void;
+    /** A scripture reference in a link, resolved rather than navigated. */
+    onreference?: (reference: string) => void;
   }
 
-  let { chunks, previews, onselect }: Props = $props();
+  let { chunks, previews, onselect, onfollow, onreference }: Props = $props();
+
+  /**
+   * Milestones with no partner, per chapter.
+   *
+   * PRODUCT §7: an unpaired milestone warns and renders as a chip "rather than
+   * swallowing the rest of the document". Deciding that needs the whole
+   * chapter, not one node — a `\qt-s` is only unpaired once you have looked at
+   * everything after it — so it is computed here and handed down.
+   *
+   * Scoped to the chunk, which is what the parse is scoped to. A milestone
+   * legally spans chapters, so one crossing a boundary reads as unpaired to
+   * both halves; that is the same limitation the chunked parse has everywhere
+   * and it errs towards showing the reader something rather than hiding it.
+   */
+  function unpairedIn(nodes: readonly PreviewNode[]): ReadonlySet<PreviewNode> {
+    const open = new Map<string, PreviewNode[]>();
+    const unpaired = new Set<PreviewNode>();
+
+    const walk = (list: readonly PreviewNode[]) => {
+      for (const node of list) {
+        const marker = node.marker;
+        if (node.kind === "ms" && marker) {
+          const base = marker.replace(/-[se]$/, "");
+          if (marker.endsWith("-s")) {
+            const pending = open.get(base) ?? [];
+            pending.push(node);
+            open.set(base, pending);
+          } else if (marker.endsWith("-e")) {
+            const pending = open.get(base);
+            // An end with nothing open is as unpaired as a start with nothing
+            // closing it, and just as worth showing.
+            if (pending && pending.length > 0) pending.pop();
+            else unpaired.add(node);
+          }
+        }
+        walk(node.children);
+      }
+    };
+
+    walk(nodes);
+    for (const pending of open.values()) for (const node of pending) unpaired.add(node);
+    return unpaired;
+  }
 
   /**
    * A stable identity per chapter.
@@ -45,8 +92,9 @@
       aria-label={chunk.number === null ? "Front matter" : `Chapter ${chunk.number}`}
     >
       {#if previews[index]}
+        {@const unpaired = unpairedIn(previews[index])}
         {#each previews[index] as node, at (at)}
-          <NodeView {node} {onselect} />
+          <NodeView {node} {onselect} {unpaired} {onfollow} {onreference} />
         {/each}
       {:else}
         <!-- In flight. Deliberately not a spinner: a chapter arrives in a few
@@ -149,11 +197,6 @@
     color: var(--severity-error);
   }
 
-  :global(.usfm-qs) {
-    font-style: italic;
-    float: inline-end; /* lint-logical-ok: `float` has no logical shorthand */
-  }
-
   /* Titles and headings, which are paragraphs in USFM's model. */
   :global(.usfm-mt1) {
     font-size: 1.5rem;
@@ -181,6 +224,200 @@
     font-style: italic;
     color: var(--text-muted);
     font-size: 0.9em;
+  }
+
+
+  /* ---------------------------------------------------------- poetry ---
+   *
+   * `\q1`..`\q4` are indentation levels, and the numbers are open-ended in the
+   * specification, so the deepest listed here is a floor rather than a limit:
+   * anything deeper simply keeps the previous indent instead of losing it.
+   */
+
+  :global(.usfm-q1) { padding-inline-start: 1.5rem; }
+  :global(.usfm-q2) { padding-inline-start: 3rem; }
+  :global(.usfm-q3) { padding-inline-start: 4.5rem; }
+  :global(.usfm-q4) { padding-inline-start: 6rem; }
+
+  :global(.usfm-q1),
+  :global(.usfm-q2),
+  :global(.usfm-q3),
+  :global(.usfm-q4) {
+    /* A poetic line that wraps is still one line; the continuation is set in
+       from its own indent so the structure survives a narrow pane. */
+    text-indent: -0.75rem;
+    margin-block-end: 0;
+  }
+
+  /* `\qs` is the Selah, set at the end of the line. */
+  :global(.usfm-qs) {
+    font-style: italic;
+    float: inline-end; /* lint-logical-ok: `float` has no logical shorthand */
+  }
+
+  /* `` is a blank line between stanzas: no text, just the space. */
+  :global(.usfm-b) {
+    margin-block: 0.7rem;
+    block-size: 0.4em;
+  }
+
+  /* ----------------------------------------------------------- lists ---
+   *
+   * Rendered as paragraphs rather than as `ul`/`li`, because USFM's list
+   * markers are a flat sequence of indent levels and not a nested structure —
+   * building real nesting from them means inventing a tree the file does not
+   * describe, and getting it wrong on the files that skip a level.
+   */
+
+  :global(.usfm-li1) { padding-inline-start: 1.5rem; }
+  :global(.usfm-li2) { padding-inline-start: 3rem; }
+  :global(.usfm-li3) { padding-inline-start: 4.5rem; }
+  :global(.usfm-li4) { padding-inline-start: 6rem; }
+
+  :global(.usfm-li1),
+  :global(.usfm-li2),
+  :global(.usfm-li3),
+  :global(.usfm-li4) {
+    margin-block-end: 0.2rem;
+  }
+
+  /* List header and footer are labels for the list, not items in it. */
+  :global(.usfm-lh),
+  :global(.usfm-lf) {
+    font-style: italic;
+    color: var(--text-muted);
+    margin-block: 0.5rem 0.2rem;
+  }
+
+  /* ---------------------------------------------------------- tables ---
+   *
+   * `border-collapse` and a light rule under the header, because a table in
+   * Scripture is a genealogy or a census and the columns have to line up to be
+   * read at all.
+   */
+
+  :global(.usfm-table) {
+    border-collapse: collapse;
+    margin-block: 0.7rem;
+    inline-size: 100%;
+  }
+
+  :global(.usfm-cell) {
+    padding-block: 0.15rem;
+    padding-inline: 0.5rem 0.9rem;
+    vertical-align: baseline;
+  }
+
+  :global(.usfm-table th.usfm-cell) {
+    font-weight: 600;
+    border-block-end: 1px solid var(--border);
+  }
+
+  /* --------------------------------------------------------- sidebar ---
+   *
+   * `\esb` is an aside in the reading sense as well as the markup one, so it
+   * is set apart rather than inline with the Scripture it sits beside.
+   */
+
+  :global(.usfm-sidebar) {
+    border-inline-start: 3px solid var(--border);
+    padding-inline-start: 0.9rem;
+    margin-block: 0.9rem;
+    background: color-mix(in srgb, var(--surface-sunken) 60%, transparent);
+    padding-block: 0.5rem;
+  }
+
+  /* ---------------------------------------------------------- figure ---
+   *
+   * Images are off by default (SECURITY 3), so the placeholder is what is
+   * normally seen and it has to be useful: the caption and the reference are
+   * the parts a reader actually needs, and a broken-image box carries neither.
+   */
+
+  :global(.usfm-figure) {
+    margin-block: 0.9rem;
+    margin-inline: 0;
+  }
+
+  :global(.usfm-figure-frame) {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    align-items: center;
+    justify-content: center;
+    min-block-size: 4rem;
+    padding: 0.75rem;
+    border: 1px dashed var(--border);
+    border-radius: 4px;
+    color: var(--text-muted);
+    font-size: 0.85em;
+  }
+
+  :global(.usfm-figure-src) {
+    font-family: var(--font-gutter);
+    font-size: 0.9em;
+    /* A file name from a document, which may be in any script and any
+       direction; it must not rearrange the sentence around it. */
+    unicode-bidi: isolate;
+  }
+
+  :global(.usfm-figure figcaption) {
+    font-size: 0.9em;
+    color: var(--text-muted);
+    margin-block-start: 0.3rem;
+  }
+
+  :global(.usfm-figure-ref) {
+    margin-inline-start: 0.4em;
+    font-style: italic;
+  }
+
+  /* ------------------------------------------------------- milestone ---
+   *
+   * Only ever seen when unpaired (PRODUCT 7). A chip, so the reader can see
+   * exactly where the markup stopped making sense without the rest of the
+   * document disappearing into it.
+   */
+
+  :global(.usfm-milestone) {
+    display: inline-block;
+    font-family: var(--font-gutter);
+    font-size: 0.75em;
+    padding-inline: 0.35em;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--severity-warning) 25%, transparent);
+    color: var(--text);
+    unicode-bidi: isolate;
+  }
+
+  /* ----------------------------------------------------------- links ---
+   *
+   * Three outcomes from SECURITY 2, and they must not look alike: one opens
+   * something outside the application, one moves the cursor, and one does
+   * nothing at all and needs to say so.
+   */
+
+  :global(.usfm-link),
+  :global(.usfm-ref) {
+    font: inherit;
+    padding: 0;
+    border: none;
+    background: none;
+    cursor: pointer;
+    color: var(--accent);
+    text-decoration: underline;
+  }
+
+  :global(.usfm-ref) {
+    color: var(--syntax-verse);
+  }
+
+  :global(.usfm-inert) {
+    /* Not a link, and deliberately not styled as one. The wavy underline is
+       the same language the diagnostics use for "this is wrong". */
+    text-decoration: underline wavy var(--severity-warning);
+    text-underline-offset: 0.2em;
+    cursor: help;
   }
 
   /* Markup the parser could not interpret. Visibly not Scripture, because a
