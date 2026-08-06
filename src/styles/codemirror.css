@@ -26,9 +26,13 @@
  * to tofu. Every rule here that the base theme also sets is written
  * `.cm-editor .cm-scroller` so it wins on specificity rather than on order.
  *
- * That remaining injection is why `style-src` still carries `'unsafe-inline'`.
- * Removing it means stopping the base theme injecting too, which is P1.12's
- * item. What is settled here is the expensive half: none of *our* appearance
+ * That injection is now admitted by a nonce rather than by `'unsafe-inline'`
+ * (P3.9): CodeMirror stamps the nonce on the element it creates, Tauri stamps
+ * the same nonce on the carrier in `index.html`, and the policy names it.
+ * `style-src` is `'self'` plus that nonce, so an injected style element with
+ * no nonce -- which is what an attack would be -- is refused.
+ *
+ * What is settled here is still the expensive half: none of *our* appearance
  * goes through the injecting API, so there is no theme surface to retrofit.
  */
 
@@ -104,12 +108,195 @@
   background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
-/* Marker tokens are bidi-isolated in their decoration (UNICODE §8). That is
-   rendering only -- it changes bidi resolution for the marker run without
-   inserting FSI/PDI characters, so the source bytes are untouched and byte
-   fidelity holds. Inserting real isolate characters would corrupt the file.
-   The token classes themselves arrive with P2.6. */
-.cm-usfm-marker {
+/* ------------------------------------------------------------- syntax ---
+ *
+ * Applied from the engine's own token stream (P2.6), never from a pattern
+ * over the text.
+ *
+ * Every marker run is bidi-isolated (UNICODE §8). A marker is Latin and
+ * left-to-right; inside a right-to-left verse the surrounding text drags it to
+ * the wrong side of the line unless it is isolated. This is rendering only --
+ * it changes bidi resolution for the run without inserting FSI/PDI characters,
+ * so the source bytes are untouched and byte fidelity holds. Inserting real
+ * isolate characters would corrupt the file and must never be done.
+ *
+ * Contrast is 3:1 or better against both surfaces (PRODUCT §10). Syntax that
+ * only reads on one theme is syntax half the users cannot see.
+ */
+
+.cm-usfm-marker,
+.cm-usfm-marker-close,
+.cm-usfm-chapter,
+.cm-usfm-verse,
+.cm-usfm-milestone,
+.cm-usfm-attribute {
   unicode-bidi: isolate;
   direction: ltr;
+}
+
+.cm-editor .cm-usfm-marker,
+.cm-editor .cm-usfm-marker-close {
+  color: var(--syntax-marker);
+}
+
+/* Chapter and verse carry the document's structure, so they are the one thing
+   worth finding by eye when scrolling through a book. */
+.cm-editor .cm-usfm-chapter {
+  color: var(--syntax-chapter);
+  font-weight: 600;
+}
+
+.cm-editor .cm-usfm-verse {
+  color: var(--syntax-verse);
+  font-weight: 600;
+}
+
+.cm-editor .cm-usfm-milestone {
+  color: var(--syntax-milestone);
+}
+
+.cm-editor .cm-usfm-attribute {
+  color: var(--syntax-attribute);
+}
+
+/* ------------------------------------------------------- autocomplete ---
+ *
+ * The marker list (P2.10). Static CSS like everything else here — the
+ * completion package injects its own structural base theme, but none of the
+ * appearance below goes through an injecting API (SECURITY §5).
+ */
+
+.cm-tooltip.cm-tooltip-autocomplete {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  /* The list is 300-odd long and filters as you type; without a bound it
+     covers the document it is meant to be helping with. */
+  max-block-size: 16rem;
+}
+
+.cm-tooltip-autocomplete > ul > li {
+  padding-block: 0.15rem;
+  padding-inline: 0.5rem;
+  /* Marker names are ASCII, and this is the one place in the editor where a
+     column of them lining up is worth having. */
+  font-family: var(--font-gutter);
+}
+
+.cm-tooltip-autocomplete > ul > li[aria-selected] {
+  background: color-mix(in srgb, var(--accent) 25%, transparent);
+  color: var(--text);
+}
+
+.cm-completionDetail {
+  margin-inline-start: 0.75rem;
+  color: var(--text-muted);
+  font-family: var(--font-content);
+  font-style: normal;
+  font-size: 0.85em;
+}
+
+/* Deprecated markers are greyed, with the replacement in the detail line
+   (PRODUCT §6). Struck through as well as dimmed: dimming alone is a contrast
+   difference, and this has to read for someone who cannot see it. */
+.cm-tooltip-autocomplete > ul > li.cm-usfm-deprecated .cm-completionLabel {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+.cm-completionMatchedText {
+  text-decoration: none;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+/* -------------------------------------------------------- diagnostics ---
+ *
+ * An underline in the text and a glyph in the gutter, never hue alone
+ * (PRODUCT §10). Both, because either one alone fails somebody: the underline
+ * is invisible once the line has scrolled out of view, and the glyph does not
+ * say which characters are wrong.
+ *
+ * `text-decoration` rather than a border or a background. A background changes
+ * the run's metrics and a bottom border sits at a fixed distance from the box
+ * — both of which collide with the marks that hang below the baseline in Tamil
+ * and Devanagari. `text-decoration-skip-ink` then keeps the line off the
+ * descenders it would otherwise strike through.
+ */
+
+.cm-editor .cm-diagnostic-underline {
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-skip-ink: auto;
+  /* Fixed rather than proportional, so the wave stays a wave at 200 % zoom. */
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}
+
+.cm-editor .cm-diagnostic-error {
+  text-decoration-color: var(--severity-error);
+  color: inherit;
+}
+
+.cm-editor .cm-diagnostic-warning {
+  text-decoration-color: var(--severity-warning);
+}
+
+.cm-editor .cm-diagnostic-information {
+  text-decoration-color: var(--severity-information);
+}
+
+.cm-editor .cm-diagnostic-gutter {
+  background: var(--surface-sunken);
+  /* Wide enough for the glyph and no wider; the gutter competes with the text
+     for the reading width, which matters most in the scripts that need it. */
+  min-inline-size: 1.1rem;
+}
+
+.cm-editor .cm-diagnostic-gutter .cm-gutterElement {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7em;
+  /* The glyphs are geometric shapes, so they come from the gutter's own stack
+     rather than the content font -- which may not have them at all. */
+  font-family: var(--font-gutter);
+}
+
+.cm-editor .cm-diagnostic-glyph.cm-diagnostic-error {
+  color: var(--severity-error);
+}
+
+.cm-editor .cm-diagnostic-glyph.cm-diagnostic-warning {
+  color: var(--severity-warning);
+}
+
+.cm-editor .cm-diagnostic-glyph.cm-diagnostic-information {
+  color: var(--severity-information);
+}
+
+/* ------------------------------------------------------- invisibles ---
+ *
+ * A label beside the character, not in place of it: the character stays where
+ * it is, because every offset in the application depends on that and byte
+ * fidelity is the whole premise (P3.12).
+ *
+ * Small, monospace and dimmed. These appear inside running Scripture and must
+ * be findable without becoming what the eye lands on first.
+ */
+
+.cm-editor .cm-invisible {
+  font-family: var(--font-gutter);
+  font-size: 0.6em;
+  vertical-align: 0.25em;
+  padding-inline: 0.15em;
+  margin-inline: 0.05em;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--syntax-milestone) 30%, transparent);
+  color: var(--text);
+  /* Latin labels inside text of any direction, so they must not reorder it. */
+  unicode-bidi: isolate;
+  direction: ltr;
+  user-select: none;
 }

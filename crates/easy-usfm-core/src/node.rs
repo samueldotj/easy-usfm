@@ -45,11 +45,16 @@ pub struct Node {
     /// `None` for text and optional breaks. That is not an oversight and not
     /// a placeholder: the parser keeps source locations in a tree parallel to
     /// the syntax tree, and it populates that tree for structural nodes only —
-    /// text leaves are recorded with no span and no CST anchor. Recovering
-    /// text spans means descending to the CST, which is P0.4's work. Modelling
-    /// the absence honestly is what stops a fabricated zero span from
-    /// propagating into click-to-source (P3.6), where it would put the cursor
-    /// at the top of the file and look like a rendering bug.
+    /// text leaves are recorded with no span and no CST anchor. Modelling the
+    /// absence honestly is what stops a fabricated zero span from propagating
+    /// into click-to-source (P3.6), where it would put the cursor at the top of
+    /// the file and look like a rendering bug.
+    ///
+    /// A text leaf's position is still recoverable, and [`crate::TextCursor`]
+    /// recovers it — the lowering copies text through verbatim, so a walk in
+    /// document order finds each run where it is. That is done at the boundary
+    /// that needs it rather than written back here, because a span this field
+    /// did not get from the parser is a different kind of fact from one it did.
     pub span: Option<ByteSpan>,
 
     /// Index of the CST node this was lowered from, where the parser recorded

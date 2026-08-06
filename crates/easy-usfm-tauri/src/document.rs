@@ -104,7 +104,7 @@ fn next_id() -> u64 {
 /// `\id` is required and a file without one is an error, so an empty buffer
 /// would greet every new document with a diagnostic. Starting from the
 /// smallest valid document is friendlier and just as honest.
-const NEW_DOCUMENT: &str = "\\id XXA\n\\h \n\\mt1 \n\\c 1\n\\p\n\\v 1 \n";
+use easy_usfm_core::NEW_DOCUMENT;
 
 impl Documents {
     fn insert(&self, path: Option<PathBuf>, fidelity: FileFidelity) -> u64 {
@@ -166,6 +166,7 @@ pub fn save_document(
     request: SaveRequest,
     path: Option<String>,
     documents: tauri::State<'_, Documents>,
+    watch: tauri::State<'_, crate::watch::FileWatch>,
 ) -> Result<SaveReport, String> {
     let mut open = documents.0.lock().map_err(|_| "document store poisoned")?;
     let document = open
@@ -212,6 +213,12 @@ pub fn save_document(
     }
     document.path = Some(saved.path.clone());
 
+    // FILE-FIDELITY 3: the watcher recognises our own writes by content. The
+    // hash of exactly the bytes that reached the disk, so however late the
+    // event arrives -- ten seconds on a network mount -- it is not reported as
+    // somebody else's edit.
+    watch.wrote(&saved.path, *blake3::hash(&bytes).as_bytes());
+
     Ok(SaveReport {
         path: saved.path.to_string_lossy().to_string(),
         reason: saved.reason.map(|reason| {
@@ -226,6 +233,35 @@ pub fn save_document(
     })
 }
 
+impl Documents {
+    /// The folder an open document was read from, for resolving a figure
+    /// against (SECURITY 3).
+    ///
+    /// `Some(None)` for a document that has never been saved: it is open, and
+    /// there is nothing for a relative path to be relative to. The distinction
+    /// matters because the interface says different things about the two.
+    ///
+    /// The directory stays on this side. What the webview sends is the path
+    /// the `\fig` asked for; where that resolves to is decided here, so a
+    /// compromised page has nothing to compose an absolute path out of.
+    pub fn directory_of(&self, id: u64) -> Option<Option<PathBuf>> {
+        let open = self.0.lock().ok()?;
+        let document = open.get(&id)?;
+        Some(
+            document
+                .path
+                .as_deref()
+                .and_then(Path::parent)
+                .map(Path::to_path_buf),
+        )
+    }
+}
+
+/// Closing a document is what drops its figure access (SECURITY 3).
+///
+/// Not a separate revocation step: `read_figure` looks the document up in this
+/// map, so removing it here is the whole of "dropped when the document closes".
+/// A lifetime enforced by there being nothing left to find cannot be forgotten.
 #[tauri::command]
 pub fn close_document(id: u64, documents: tauri::State<'_, Documents>) {
     if let Ok(mut open) = documents.0.lock() {
@@ -234,15 +270,12 @@ pub fn close_document(id: u64, documents: tauri::State<'_, Documents>) {
 }
 
 /// The per-line terminators, expanded to one entry per newline.
+///
+/// Delegates to the core, which is where the web shell reads it from too --
+/// two copies of this is two chances for a file's line endings to come back
+/// different depending on which build opened it.
 fn terminators(fidelity: &FileFidelity, newlines: usize) -> Vec<Eol> {
-    match &fidelity.eol {
-        LineEndings::Uniform(eol) => vec![*eol; newlines],
-        LineEndings::Mixed { per_line, dominant } => {
-            let mut out = per_line.clone();
-            out.resize(newlines, *dominant);
-            out
-        }
-    }
+    fidelity.eol.per_line(newlines)
 }
 
 /// Whether the path looks like a USFM file, for the dialog's filter.

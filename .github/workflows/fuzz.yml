@@ -1,0 +1,77 @@
+# Nightly fuzzing over the extended corpus — P4.5.
+#
+# Nightly rather than per-push, and over the *extended* tier rather than the
+# core one, because that is where breadth lives (ARCHITECTURE 12.4): hundreds of
+# translations that would add nothing to a pull-request cycle but do catch the
+# construct nobody anticipated.
+#
+# The corpus is the seed. A fuzzer starting from nothing spends its first hour
+# discovering that a USFM file begins with a backslash; starting from real
+# Scripture it spends that hour on the shapes real Scripture nearly has.
+name: fuzz
+
+on:
+  schedule:
+    # 03:00 UTC, which is outside every working day this project has users in.
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: "Minutes per target"
+        default: "20"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fuzz:
+    name: ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      # One failing target should not cancel the others: they find different
+      # things, and a night's run of the other two is worth having.
+      fail-fast: false
+      matrix:
+        target: [parse, round_trip, edits]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # cargo-fuzz needs nightly for the sanitizer instrumentation.
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      - name: Fetch the extended corpus
+        run: cargo xtask corpus fetch --tier extended
+        continue-on-error: true
+
+      - name: Seed from the corpus
+        run: |
+          mkdir -p corpus/fuzz-seeds
+          # Flattened into one directory with unique names: libFuzzer takes a
+          # directory of inputs, not a tree.
+          find corpus/core corpus/extended corpus/pathological -type f \
+            \( -name '*.usfm' -o -name '*.SFM' -o -name '*.sfm' \) 2>/dev/null \
+            | head -400 \
+            | while read -r file; do
+                cp "$file" "corpus/fuzz-seeds/$(echo "$file" | tr '/' '_')" || true
+              done
+          ls corpus/fuzz-seeds | wc -l
+
+      - name: Fuzz
+        run: |
+          cargo fuzz run ${{ matrix.target }} corpus/fuzz-seeds -- \
+            -max_total_time=$(( ${{ github.event.inputs.minutes || 20 }} * 60 )) \
+            -rss_limit_mb=4096
+        working-directory: crates/easy-usfm-core
+
+      # A crash is only useful with the input that caused it.
+      - name: Upload any findings
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-findings-${{ matrix.target }}
+          path: crates/easy-usfm-core/fuzz/artifacts/
+          if-no-files-found: ignore

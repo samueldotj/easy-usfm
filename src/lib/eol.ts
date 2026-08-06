@@ -69,6 +69,18 @@ export class LineTerminators {
     return this.#eols[index] ?? this.#fallback;
   }
 
+  /**
+   * The terminator a recovery would write the file with.
+   *
+   * The first one, falling back to what the document was opened as -- the same
+   * rule the shell applies when it rebuilds the envelope, so the two cannot
+   * disagree about a file's line endings. A document with no newlines at all
+   * has only the fallback to go on.
+   */
+  dominant(): Eol {
+    return this.#eols[0] ?? this.#fallback;
+  }
+
   toArray(): Eol[] {
     return [...this.#eols];
   }

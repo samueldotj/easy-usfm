@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Base styles.
  *
  * Two rules apply from the first commit rather than being retrofitted, because
@@ -17,22 +17,53 @@
   /* Content is proportional and script-appropriate; only the gutter is
      monospace. UNICODE §7 inverts the usual editor font choice because
      monospace coverage is poor to nonexistent for many complex scripts, and a
-     monospace-first stack renders them as tofu. */
+     monospace-first stack renders them as tofu.
+
+     "Easy USFM Content" is not a font. It is a family assembled at runtime
+     from one `@font-face` per script, each claiming its own `unicode-range`
+     and carrying that script's `size-adjust` (UNICODE 7). The browser picks
+     per character, so a Tamil word inside an English sentence gets the size
+     multiplier and the English does not -- with no markup and no script
+     detection at render time. `lib/fonts.svelte.ts` builds it; the names
+     after it are what a system with none of those faces falls back to. */
   --font-content:
-    "Noto Sans", "Noto Sans Devanagari", "Noto Sans Tamil", "Noto Sans Hebrew",
-    "Noto Sans Arabic", "Noto Sans Bengali", "Noto Sans Thai", "Noto Sans Khmer",
-    "Noto Sans Myanmar", system-ui, sans-serif;
+    "Easy USFM Content", "Noto Sans", system-ui, sans-serif;
   --font-gutter: "Cascadia Mono", "SF Mono", "DejaVu Sans Mono", monospace;
 
-  /* 1.5 for Latin; 1.7 where marks sit above and below the baseline. */
+  /* 1.5 for Latin; 1.7 where marks sit above and below the baseline
+     (UNICODE 7). Set from the open document's scripts, because line height is
+     a block property and has no per-run equivalent of the size multiplier --
+     so the choice is which mistake to make in a mixed file, and the roomier
+     one is right: Latin at 1.7 is slightly airy, Devanagari at 1.5 has marks
+     from adjacent lines touching. */
   --line-height: 1.5;
 
   --surface: #ffffff;
   --surface-sunken: #f4f4f5;
   --text: #18181b;
-  --text-muted: #71717a;
+  /* Darker than it looks like it needs to be, because it is not only used on
+     the page. The status bar and the diagnostics panel sit on the *sunken*
+     surface, and against that the obvious zinc-500 measures 4.40 against the
+     4.5 PRODUCT 10 requires -- passing on white and failing where it is
+     actually read. Checked against both surfaces, not the lighter one. */
+  --text-muted: #67676f;
   --border: #d4d4d8;
   --accent: #2563eb;
+
+  /* Syntax. Kept beside the other colours so a theme is one set of values,
+     and chosen for 3:1 against the surface they sit on (PRODUCT §10). */
+  --syntax-marker: #6d28d9;
+  --syntax-chapter: #b45309;
+  --syntax-verse: #0369a1;
+  --syntax-milestone: #0f766e;
+  --syntax-attribute: #9d174d;
+
+  /* Severity. Shape carries the meaning and colour only reinforces it
+     (PRODUCT §10), so these are chosen for 4.5:1 against the surface — a
+     diagnostic that reads as decoration has failed at its one job. */
+  --severity-error: #b91c1c;
+  --severity-warning: #a16207;
+  --severity-information: #1d4ed8;
 }
 
 /*
@@ -52,6 +83,16 @@
     --text-muted: #a1a1aa;
     --border: #3f3f46;
     --accent: #60a5fa;
+
+    --syntax-marker: #c4b5fd;
+    --syntax-chapter: #fcd34d;
+    --syntax-verse: #7dd3fc;
+    --syntax-milestone: #5eead4;
+    --syntax-attribute: #f9a8d4;
+
+    --severity-error: #f87171;
+    --severity-warning: #fbbf24;
+    --severity-information: #93c5fd;
   }
 }
 
@@ -62,15 +103,35 @@
   --text-muted: #a1a1aa;
   --border: #3f3f46;
   --accent: #60a5fa;
+
+  --syntax-marker: #c4b5fd;
+  --syntax-chapter: #fcd34d;
+  --syntax-verse: #7dd3fc;
+  --syntax-milestone: #5eead4;
+  --syntax-attribute: #f9a8d4;
+
+  --severity-error: #f87171;
+  --severity-warning: #fbbf24;
+  --severity-information: #93c5fd;
 }
 
 :root[data-theme="light"] {
   --surface: #ffffff;
   --surface-sunken: #f4f4f5;
   --text: #18181b;
-  --text-muted: #71717a;
+  --text-muted: #67676f;
   --border: #d4d4d8;
   --accent: #2563eb;
+
+  --syntax-marker: #6d28d9;
+  --syntax-chapter: #b45309;
+  --syntax-verse: #0369a1;
+  --syntax-milestone: #0f766e;
+  --syntax-attribute: #9d174d;
+
+  --severity-error: #b91c1c;
+  --severity-warning: #a16207;
+  --severity-information: #1d4ed8;
 }
 
 *,

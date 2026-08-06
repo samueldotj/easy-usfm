@@ -28,7 +28,7 @@ use std::cell::OnceCell;
 
 use crate::backend::Backend;
 use crate::severity::{self, DiagnosticConfig};
-use crate::{ByteSpan, Diagnostic, DiagnosticCode, Node, NormalizedIndex, VerseIndex};
+use crate::{ByteSpan, Diagnostic, DiagnosticCode, Node, NormalizedIndex, VerseIndex, Version};
 
 /// One edit, in byte offsets against the document as it was **before** the
 /// batch was applied.
@@ -161,6 +161,10 @@ pub struct Session {
     chunks: Vec<Chunk>,
     rev: u64,
     config: DiagnosticConfig,
+    /// What the file itself declares, re-read after every edit.
+    detected: Option<Version>,
+    /// What the user has said instead, which wins and survives edits.
+    overridden: Option<Version>,
 }
 
 impl Session {
@@ -174,16 +178,71 @@ impl Session {
     pub fn with_config(source: impl Into<String>, config: DiagnosticConfig) -> Self {
         let source = source.into();
         let chunks = split(&source, 0, 0);
+        let detected = Version::detect(&source);
         Self {
             source,
             chunks,
             rev: 0,
             config,
+            detected,
+            overridden: None,
         }
     }
 
     pub fn config(&self) -> &DiagnosticConfig {
         &self.config
+    }
+
+    /// What the document declares, if it declares anything.
+    ///
+    /// `None` is not the same as [`Version::ASSUMED`] and the interface shows
+    /// them differently: most files in circulation carry no `\usfm` line and
+    /// are perfectly valid (PRODUCT §4), so "says nothing" has to be
+    /// distinguishable from "says 3.0" or the status bar reports a declaration
+    /// the file does not make.
+    pub fn detected_version(&self) -> Option<Version> {
+        self.detected
+    }
+
+    /// The version diagnostics are actually judged against.
+    pub fn document_version(&self) -> Version {
+        self.config.document_version
+    }
+
+    /// Whether that came from the user rather than from the file.
+    pub fn version_is_overridden(&self) -> bool {
+        self.overridden.is_some()
+    }
+
+    /// Overrides the document's version, or returns to what the file says.
+    ///
+    /// Changes no text. PRODUCT §4 is explicit that the detected version is
+    /// **never written into the file automatically**, and an override that
+    /// edited the `\usfm` line would be exactly that — with the added problem
+    /// that it would dirty a document the user only wanted to look at
+    /// differently.
+    ///
+    /// Nothing is reparsed. Severity is derived from the marker table at
+    /// query time rather than cached with the chunk precisely so that this
+    /// costs nothing.
+    pub fn override_version(&mut self, version: Option<Version>) {
+        self.overridden = version;
+        self.config.document_version = version.or(self.detected).unwrap_or(Version::ASSUMED);
+    }
+
+    /// Re-reads the `\usfm` declaration after an edit.
+    ///
+    /// Cheap enough to do unconditionally: the scan stops at the first `\c`,
+    /// so it reads the header and not the document.
+    ///
+    /// A user override survives — someone who has said "treat this as 2.0"
+    /// has not asked to be second-guessed the next time they touch the header.
+    fn redetect_version(&mut self) {
+        self.detected = Version::detect(&self.source);
+        self.config.document_version = self
+            .overridden
+            .or(self.detected)
+            .unwrap_or(Version::ASSUMED);
     }
 
     pub fn source(&self) -> &str {
@@ -237,6 +296,10 @@ impl Session {
             total.shifted += one.shifted;
         }
 
+        // After the whole batch rather than per edit: typing `\usfm 3.1` a
+        // character at a time passes through `\usfm 3` on the way, and there is
+        // no reason to publish each of those.
+        self.redetect_version();
         Ok(total)
     }
 
@@ -396,7 +459,8 @@ impl Session {
                     // Re-derived from the marker table below, with a version
                     // model the parser does not have.
                     .filter(|diagnostic| !severity::is_derived(diagnostic.code))
-                    .filter(|diagnostic| is_header || !is_document_scoped(diagnostic.code))
+                    .filter(|diagnostic| is_header || !is_header_scoped(diagnostic.code))
+                    .filter(|diagnostic| !is_cross_chunk(diagnostic.code))
                     // Anything the synthetic context provoked describes text
                     // the user did not write.
                     .filter(|diagnostic| diagnostic.span.end > offset || offset == 0)
@@ -495,10 +559,65 @@ impl Session {
             .collect()
     }
 
+    /// Every occurrence of `query`, comparing bytes rather than characters.
+    ///
+    /// UNICODE §4 gives Find a **Match exact byte sequence** toggle, off by
+    /// default. It exists because the normalized search is the right default
+    /// and the wrong tool for one real job: finding out *which* spelling a
+    /// file actually uses. Someone auditing a file for mixed normalization
+    /// needs a search that distinguishes the two, and the whole point of the
+    /// default is that it does not.
+    ///
+    /// Scanned over the whole source rather than per chunk, which the
+    /// normalized path cannot do. There is no index to keep chunk-scoped here,
+    /// so a match spanning a chapter boundary is found — a small way in which
+    /// the exact search is the more literal of the two.
+    pub fn find_exact(&self, query: &str) -> Vec<ByteSpan> {
+        if query.is_empty() {
+            return Vec::new();
+        }
+
+        let mut spans = Vec::new();
+        let mut from = 0usize;
+        while let Some(offset) = self.source[from..].find(query) {
+            let start = from + offset;
+            spans.push(ByteSpan::new(start, start + query.len()));
+            // Past this match: overlapping hits are not what anyone means by
+            // "find the next one".
+            from = start + query.len().max(1);
+            if from >= self.source.len() {
+                break;
+            }
+        }
+        spans
+    }
+
     /// Whether every chunk is already NFC. `false` is what `USFM-I021`
     /// reports.
     pub fn is_normalized(&self) -> bool {
         (0..self.chunks.len()).all(|index| self.normalized(index).is_normalized())
+    }
+
+    /// The token stream over a byte range, for highlighting.
+    ///
+    /// Scoped to a range because the caller is a viewport: highlighting the
+    /// whole of a 2 MB document to paint forty visible lines would put the
+    /// expensive work on the path that has to keep up with typing.
+    ///
+    /// The range is widened to line boundaries, since a token cut in half by
+    /// the viewport edge would be classified by whatever fragment happened to
+    /// be inside it.
+    pub fn tokens(&self, range: &ByteSpan) -> Vec<crate::Token> {
+        let start = line_start(&self.source, range.start.min(self.source.len()));
+        let end = line_end(&self.source, range.end.min(self.source.len()));
+
+        Backend::tokens(&self.source[start..end])
+            .into_iter()
+            .map(|token| crate::Token {
+                kind: token.kind,
+                span: shift_span(&token.span, start),
+            })
+            .collect()
     }
 
     /// Every verse in the document, in source order.
@@ -507,6 +626,123 @@ impl Session {
     /// whole — a chapter cannot tell whether another repeats its verses.
     pub fn verses(&self) -> VerseIndex {
         VerseIndex::build(&self.content())
+    }
+
+    /// The book this document says it is, from `\id`.
+    pub fn book(&self) -> Option<&str> {
+        self.book_code()
+    }
+
+    /// Where a chapter begins.
+    ///
+    /// The `\c` line itself, so going to a chapter puts the cursor on the
+    /// marker rather than in whatever happens to follow it. A chapter with no
+    /// verses under it still has a location — `\c 3` with nothing after it is
+    /// exactly the half-finished state this editor has to stay usable in, and
+    /// the verse index cannot answer for it.
+    pub fn chapter_span(&self, number: u16) -> Option<ByteSpan> {
+        let chunk = self
+            .chunks
+            .iter()
+            .find(|chunk| chunk.number == Some(u32::from(number)))?;
+        Some(ByteSpan::new(
+            chunk.start,
+            line_end(&self.source, chunk.start),
+        ))
+    }
+
+    /// Resolves a reference the user typed (PRODUCT §6.2).
+    pub fn resolve(&self, text: &str) -> crate::Resolution {
+        let Some(reference) = crate::Reference::parse(text) else {
+            return crate::Resolution::Unparseable;
+        };
+        crate::reference::resolve(&reference, &self.verses(), self.book(), |chapter| {
+            self.chapter_span(chapter)
+        })
+    }
+
+    /// The autocomplete context at a `\`, which is the offset of the backslash
+    /// itself rather than of the caret after it.
+    ///
+    /// Two facts, because they are the two USFM turns on: whether the marker
+    /// is line-initial, and what it would be nesting inside.
+    pub fn completion_context(&self, byte: usize) -> crate::CompletionContext {
+        let byte = byte.min(self.source.len());
+        let start = line_start(&self.source, byte);
+
+        crate::CompletionContext {
+            line_initial: self.source[start..byte].chars().all(char::is_whitespace),
+            inside: self.enclosing_marker(byte),
+        }
+    }
+
+    /// The innermost character or note marker still open at `byte`.
+    ///
+    /// Innermost by span length rather than by tree depth: a node's depth
+    /// depends on how the parser chose to nest a *malformed* region, and the
+    /// smallest span containing the cursor is the same answer without that
+    /// dependency.
+    ///
+    /// Scoped to one chunk, so this stays on the cheap path even though it
+    /// walks a tree — the chunk is a chapter, and it is parsed already.
+    fn enclosing_marker(&self, byte: usize) -> Option<String> {
+        let index = self
+            .chunks
+            .iter()
+            .position(|chunk| byte < chunk.end)
+            .unwrap_or(self.chunks.len().checked_sub(1)?);
+
+        let mut best: Option<(usize, String)> = None;
+
+        for root in &self.chunk_content(index) {
+            for node in root.descendants() {
+                let Some(span) = node.span.as_ref() else {
+                    continue;
+                };
+                // Half-open at the start: a cursor exactly on the marker's
+                // first byte is not yet inside it.
+                if span.start >= byte || byte > span.end {
+                    continue;
+                }
+                let Some(marker) = node.marker.as_ref() else {
+                    continue;
+                };
+
+                let name = marker.as_str().trim_start_matches('+');
+                let Some(info) = crate::markers::lookup(name) else {
+                    continue;
+                };
+                if !matches!(
+                    info.class,
+                    crate::markers::MarkerClass::Character | crate::markers::MarkerClass::Note
+                ) {
+                    continue;
+                }
+
+                let length = span.end - span.start;
+                if best.as_ref().is_none_or(|(shortest, _)| length < *shortest) {
+                    best = Some((length, name.to_string()));
+                }
+            }
+        }
+
+        best.map(|(_, name)| name)
+    }
+
+    /// How a byte offset reads as a reference, for the status bar.
+    pub fn reference_at(&self, byte: usize) -> Option<String> {
+        crate::reference::reference_at(&self.verses(), self.book(), byte, self.chapter_at(byte))
+    }
+
+    /// Which chapter a byte offset is in, from the chunking rather than the
+    /// parse — chunks partition at `\c`, so this is what they are.
+    fn chapter_at(&self, byte: usize) -> Option<u16> {
+        let chunk = self
+            .chunks
+            .iter()
+            .find(|chunk| byte < chunk.end)
+            .or_else(|| self.chunks.last())?;
+        u16::try_from(chunk.number?).ok()
     }
 
     /// Tier 3 — what no single chunk can see.
@@ -532,7 +768,26 @@ impl Session {
             }
         }
 
+        // Asked of the chunk list, which is the only thing that knows. A `\c`
+        // is what starts a chunk, so "are there any chapters" is exactly "is
+        // there a chunk with a number" — and no individual chunk can see that.
+        if !self.chunks.iter().any(|chunk| chunk.number.is_some()) {
+            diagnostics.push(Diagnostic {
+                code: DiagnosticCode::MissingChapterMarker,
+                severity: crate::Severity::Error,
+                // Zero-width at the top of the file: the fault is the absence
+                // of something, so there is no text to point at.
+                span: ByteSpan::new(0, 0),
+                message: "this document has no \\c chapter marker".to_string(),
+            });
+        }
+
         diagnostics.extend(self.verses().diagnostics());
+
+        // Joiners, which are a question about characters rather than about
+        // structure -- by the time there is a tree, a marker with a joiner in
+        // it is simply an unknown marker and the joiner is inside the name.
+        diagnostics.extend(crate::joiners::diagnostics(&self.source));
 
         // USFM-I021. Reported once for the document rather than once per
         // occurrence: the answer is a single command, and a diagnostic on
@@ -655,17 +910,13 @@ fn line_end(text: &str, offset: usize) -> usize {
 
 // ------------------------------------------------------------ diagnostics ---
 
-/// Conditions that describe the document rather than a chapter.
+/// Conditions only the header chunk can answer.
 ///
 /// A chapter parsed on its own has no `\id`, so the parser reports one missing
 /// — correctly, for the text it was given, and uselessly, because the `\id` is
 /// in the header chunk. Suppressed everywhere but the header, where the
 /// question is real.
-///
-/// The sequencing codes are suppressed for a different reason: no chunk can
-/// see its neighbours, so any answer it gives is guesswork. They are Tier 3's
-/// to report.
-const fn is_document_scoped(code: DiagnosticCode) -> bool {
+const fn is_header_scoped(code: DiagnosticCode) -> bool {
     matches!(
         code,
         DiagnosticCode::MissingIdMarker
@@ -673,7 +924,25 @@ const fn is_document_scoped(code: DiagnosticCode) -> bool {
             | DiagnosticCode::TextBeforeId
             | DiagnosticCode::HeaderAfterBody
             | DiagnosticCode::BodyParagraphBeforeChapter
-            | DiagnosticCode::MissingChapterMarker
+    )
+}
+
+/// Conditions no chunk can answer, including the header.
+///
+/// These are about the *relationship* between chunks, so any answer a chunk
+/// gives from inside itself is guesswork. Tier 3 reports them
+/// (ARCHITECTURE §8.2).
+///
+/// `MissingChapterMarker` is the one that has to be listed here rather than
+/// above, and the reason is worth stating: the header chunk is *defined* as
+/// everything before the first `\c`, so it never contains one and the parser
+/// always reports it missing. Treating the header as the authority on this
+/// question puts a false Error on every well-formed document in the corpus —
+/// which is what it did until the diagnostics panel made it visible.
+const fn is_cross_chunk(code: DiagnosticCode) -> bool {
+    matches!(
+        code,
+        DiagnosticCode::MissingChapterMarker
             | DiagnosticCode::InvalidChapterSequence
             | DiagnosticCode::InvalidVerseSequence
             | DiagnosticCode::DuplicateChapter

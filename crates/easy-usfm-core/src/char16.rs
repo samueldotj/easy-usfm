@@ -32,6 +32,22 @@ impl Char16 {
     pub const fn get(self) -> u32 {
         self.0
     }
+
+    /// An offset that arrived **from** the editor.
+    ///
+    /// The sealed constructor exists to stop a byte offset masquerading as a
+    /// Char16 one — the failure that is invisible on ASCII and wrong
+    /// everywhere else. It does not exist to stop offsets entering from
+    /// outside, and there is one place they legitimately do: CodeMirror and
+    /// DOM ranges already count in UTF-16 code units, so a position reported
+    /// by the editor *is* a Char16 and only needs carrying.
+    ///
+    /// Named so the distinction is visible at every call site. If this ever
+    /// appears somewhere that is not translating an editor position, that is
+    /// the bug — a plain `From<u32>` would have made it unfindable.
+    pub const fn from_editor(offset: u32) -> Self {
+        Self(offset)
+    }
 }
 
 impl std::fmt::Display for Char16 {
@@ -155,6 +171,29 @@ impl Utf16Mapper {
         Some(Char16(char16))
     }
 
+    /// The 1-based line a byte offset falls on.
+    ///
+    /// The line index is already here, so answering costs a binary search
+    /// rather than a scan. It exists because a diagnostics panel has to say
+    /// *where*, and working that out on the JavaScript side would mean walking
+    /// the document on every keystroke to recover something this structure
+    /// already knows.
+    ///
+    /// Returns `None` only if `source` is not the string this mapper indexed.
+    pub fn line(&self, source: &str, byte: usize) -> Option<u32> {
+        if !self.matches(source) {
+            return None;
+        }
+        let byte = byte.min(source.len());
+
+        // `line_starts` begins with (0, 0), so the count of starts at or before
+        // any offset is already the 1-based line number.
+        Some(
+            self.line_starts
+                .partition_point(|(line_byte, _)| (*line_byte as usize) <= byte) as u32,
+        )
+    }
+
     /// Converts back to a byte offset.
     ///
     /// `None` if the offset is past the end, or if it falls **between the two
@@ -259,6 +298,34 @@ mod tests {
     fn the_wrong_source_is_refused_rather_than_answered() {
         let mapper = Utf16Mapper::new("\\c 1\n\\v 1 text\n");
         assert_eq!(mapper.to_char16("something else entirely", 3), None);
+    }
+
+    #[test]
+    fn a_byte_offset_reports_the_line_it_falls_on() {
+        // Tamil on the second line, so the answer cannot come from counting
+        // UTF-16 units and calling them bytes.
+        let source = "\\id GEN\n\\v 1 க்ஷேமம்\n\\v 2 x\n";
+        let mapper = Utf16Mapper::new(source);
+
+        assert_eq!(mapper.line(source, 0), Some(1));
+        assert_eq!(mapper.line(source, 7), Some(1)); // the newline itself
+        assert_eq!(mapper.line(source, 8), Some(2)); // just after it
+                                                     // Inside the Tamil, at a byte well past where the UTF-16 offset for
+                                                     // the same character would be — 21 bytes of Tamil are 7 units.
+        assert_eq!(mapper.line(source, 20), Some(2));
+        assert_eq!(mapper.line(source, source.find("\\v 2").unwrap()), Some(3));
+        // The source ends with a newline, so there is an empty fourth line and
+        // the end of the file is on it. The same convention as the editor's,
+        // which matters because these two numbers sit beside each other in the
+        // panel and the gutter.
+        assert_eq!(mapper.line(source, source.len()), Some(4));
+    }
+
+    #[test]
+    fn a_line_past_the_end_clamps_rather_than_panicking() {
+        let mapper = Utf16Mapper::new("abc\n");
+        assert_eq!(Utf16Mapper::new("abc\n").line("abc\n", 9_999), Some(2));
+        assert_eq!(mapper.line("something else", 0), None);
     }
 
     #[test]

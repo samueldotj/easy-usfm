@@ -20,3 +20,9 @@ blake3.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
+
+# Not Criterion, and not `#[bench]`: the gate compares ratios against a
+# calibration loop so a hosted runner's speed cancels out. See benches/engine.rs.
+[[bench]]
+name = "engine"
+harness = false

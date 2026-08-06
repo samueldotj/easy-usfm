@@ -56,7 +56,11 @@ export function sanitizeHref(raw: string): SafeHref {
 
 **Images are off by default**, with a per-document opt-in enabling local files only.
 
-Remote schemes are never loaded — a placeholder renders instead, which prevents a document phoning home and leaking that a particular file was opened. Local paths resolve relative to the document's directory, rejecting `..` traversal and absolute paths, loaded through the Tauri asset protocol scoped **at runtime to that single directory** and dropped when the document closes. 20 MB decode cap. The web build never loads local images.
+Remote schemes are never loaded — a placeholder renders instead, which prevents a document phoning home and leaking that a particular file was opened. Local paths resolve relative to the document's directory, rejecting `..` traversal and absolute paths, and the bytes are read **by the shell, for a document it currently holds open**, so access ends when the document does. 20 MB decode cap, checked before the file is read. The web build never loads local images.
+
+> **On the asset protocol.** This section previously specified the Tauri asset protocol, scoped at runtime to the document's directory and dropped on close. The first half of that is available; the second is not. Tauri's filesystem scope is additive, and `forbid_directory` is documented to take precedence over allowed paths *always* — so the only way to withdraw a grant is a permanent denial, which does not drop access when the document closes, it poisons that directory for every document opened from it afterwards. A reader who closed a book and reopened it would find its figures gone for the rest of the session, with nothing to explain why.
+>
+> Reading through a command instead makes the lifetime exact rather than approximate: the grant *is* the open-document entry the shell already keeps, so there is no scope to remember to revoke. It also preserves this shell's stronger existing rule — no `fs:` permission of any kind, and every path the webview can reach is one a person chose in a native picker. The webview never learns the document's directory; it sends the path the `ig` asked for and the shell decides what that means. Implemented in `crates/easy-usfm-tauri/src/figure.rs`.
 
 ## 4. Content Security Policy
 

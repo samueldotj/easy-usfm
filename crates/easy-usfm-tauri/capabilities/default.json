@@ -2,8 +2,18 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "What the main window is permitted to do.",
-  "windows": ["main"],
-  "permissions": ["core:default", "dialog:allow-open", "dialog:allow-save", "dialog:allow-ask"],
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-set-title",
+    "core:window:allow-destroy",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "dialog:allow-ask",
+    "opener:allow-open-url"
+  ],
   "comment": [
     "SECURITY: capabilities are granted as they become necessary, never in",
     "advance. `core:default` is the minimum a window needs to exist.",
@@ -12,6 +22,25 @@
     "what is *not* here: no fs: permission of any kind. Reading and writing go",
     "through this crate's own commands, so the webview can only touch a path a",
     "person chose in a native picker -- never a directory, never a glob, and",
-    "never a path the page composed for itself."
+    "never a path the page composed for itself.",
+    "",
+    "`opener:allow-open-url` lets a link inside a document be handed to the",
+    "operating system. SECURITY 2 requires exactly that and forbids the",
+    "alternative: a link opened in the webview is a link running in the",
+    "application's own origin. The URL is sanitized before it gets here and",
+    "the user confirms each one -- the permission grants the mechanism, not",
+    "the decision.",
+    "",
+    "`core:window:allow-set-title` puts the file name and the unsaved marker",
+    "in the native title bar. `core:default` does not include it, and the",
+    "call failed silently in the browser build because the desktop branch",
+    "never runs there -- it took running the real application to see.",
+    "",
+    "`core:window:allow-destroy` is what actually closes the window. Listening",
+    "for a close request makes the webview responsible for the close as well",
+    "as for vetoing it, so without this the unsaved-changes guard turned into",
+    "a window that could not be shut: clicking the close button rejected and",
+    "did nothing. `core:default` grants neither, and the browser build never",
+    "reaches this path."
   ]
 }

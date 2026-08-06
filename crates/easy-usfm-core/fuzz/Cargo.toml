@@ -1,0 +1,39 @@
+[package]
+name = "easy-usfm-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+# Not a workspace member. `cargo-fuzz` builds this with its own flags and a
+# nightly toolchain, and having it in the workspace would put those on every
+# ordinary `cargo build`.
+[workspace]
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+easy-usfm-core = { path = ".." }
+
+[[bin]]
+name = "parse"
+path = "fuzz_targets/parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "round_trip"
+path = "fuzz_targets/round_trip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "edits"
+path = "fuzz_targets/edits.rs"
+test = false
+doc = false
+bench = false

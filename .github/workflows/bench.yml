@@ -1,0 +1,45 @@
+# The performance gate — P4.5.
+#
+# "> 20 % perf regression fails the build."
+#
+# The benchmark reports every timing as a ratio against a calibration loop
+# measured in the same process, so a hosted runner's speed cancels out and the
+# committed baselines mean something on a machine nobody recorded them on. See
+# crates/easy-usfm-core/benches/engine.rs.
+name: bench
+
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  performance:
+    name: performance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Measure
+        run: |
+          cargo bench -p easy-usfm-core --bench engine -- --json \
+            | sed -n '/^{/,/^}/p' > bench-results.json
+          cat bench-results.json
+
+      - name: Compare against the pinned baselines
+        run: node scripts/check-bench.mjs bench-results.json
+
+      # Useful when the gate fails: the numbers, without re-running anything.
+      - name: Upload the measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-results
+          path: bench-results.json

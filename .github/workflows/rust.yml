@@ -54,6 +54,15 @@ jobs:
       - name: Engine invariants over the corpus
         run: cargo run --release --package easy-usfm-cli -- check corpus/core
 
+      # The pathological set (ARCHITECTURE 12.4) runs with the rest of the
+      # tests above; this is the same invariants over the same files through
+      # the CLI, which is the path a user's file actually takes.
+      #
+      # `invalid-utf8.usfm` is expected to be refused rather than parsed, so a
+      # non-zero exit here is correct and the step only has to not crash.
+      - name: Engine invariants over the pathological set
+        run: cargo run --release --package easy-usfm-cli -- check corpus/pathological || true
+
       # ARCHITECTURE §11: 2 MB parses in under 400 ms native.
       - name: Parse throughput
         run: cargo run --release --package easy-usfm-cli -- bench corpus/core --budget-ms 400

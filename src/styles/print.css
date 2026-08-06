@@ -1,0 +1,262 @@
+/*
+ * Print (PRODUCT §8) — P3.10.
+ *
+ * "Ctrl+P produces a clean, readable document from the preview via print CSS.
+ * Not typesetting."
+ *
+ * What browsers give: `@page` size and margin, `break-*`, `orphans`, `widows`,
+ * `print-color-adjust`. What they do not: Paged Media margin boxes, so running
+ * headers come from the browser's own print dialog; `float: footnote`, so
+ * per-page footnotes are impossible; named pages; column balancing. Anything
+ * needing the second list is out of scope by definition rather than by
+ * omission, and approximating it badly would be worse than not offering it.
+ *
+ * The `@page` rule itself is generated at print time from the document's
+ * settings, so it is not here.
+ */
+
+@media print {
+  /*
+   * Everything that is not the Scripture.
+   *
+   * `!important` throughout because these compete with inline styles the split
+   * pane writes for its own sizing, and a pane that is 50% wide on paper is a
+   * page of Scripture with a blank half beside it.
+   */
+  header,
+  footer,
+  .bar,
+  .panel,
+  .notice,
+  .editor,
+  .cm-editor,
+  .divider,
+  dialog {
+    display: none !important;
+  }
+
+  /* The preview stops being one half of a split and becomes the page. */
+  .app,
+  main,
+  .split,
+  .pane {
+    display: block !important;
+    block-size: auto !important;
+    overflow: visible !important;
+    flex-basis: auto !important;
+    inline-size: 100% !important;
+    max-inline-size: none !important;
+  }
+
+  .preview {
+    block-size: auto !important;
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+
+  /* Ink on paper, whatever the screen was set to. A dark theme printed as it
+     appears is a page of black toner and an unhappy translator. */
+  :root {
+    color-scheme: light;
+  }
+
+  body {
+    color: #000;
+    background: #fff;
+  }
+
+  /* The base size from the print settings, which the generated rule sets.
+     Falls back to the specification's 11 pt if nothing generated one. */
+  .preview {
+    font-size: var(--print-font-size, 11pt);
+  }
+
+  /* The optional parts (PRODUCT 8). Omitted rather than restyled: a reading
+     copy without apparatus is the common reason to print one. */
+  :root.print-no-headings .usfm-s,
+  :root.print-no-headings .usfm-s1,
+  :root.print-no-headings .usfm-s2,
+  :root.print-no-headings .usfm-s3,
+  :root.print-no-headings .usfm-r,
+  :root.print-no-intro .usfm-ip,
+  :root.print-no-intro .usfm-im,
+  :root.print-no-intro .usfm-is,
+  :root.print-no-intro .usfm-is1,
+  :root.print-no-intro .usfm-io,
+  :root.print-no-intro .usfm-io1,
+  :root.print-no-intro .usfm-io2,
+  :root.print-no-intro .usfm-iot,
+  /* Cross-references, inline and in the collected notes alike. Keyed off the
+     class the note component actually writes -- `.usfm-x` matched nothing,
+     because a note is marked by `reference` rather than by its marker, so the
+     toggle silently did nothing. */
+  :root.print-no-xrefs .usfm-note.reference,
+  :root.print-no-xrefs .usfm-notes-entry.reference {
+    display: none !important;
+  }
+
+  .chapter {
+    /*
+     * Mandatory, and the reason this file ships with the optimization it
+     * corrects. The preview sets `content-visibility: auto` so the browser can
+     * skip offscreen chapters (ARCHITECTURE §10) -- and the print renderer
+     * sees exactly that. Without this override, printing a fifty-chapter book
+     * yields one chapter and forty-nine blank pages, which is a bug nobody
+     * finds until the day they need to print.
+     */
+    content-visibility: visible !important;
+    contain-intrinsic-size: none !important;
+
+    max-inline-size: none;
+  }
+
+  /* A chapter starting a page is the convention and the default, and it is a
+     setting (PRODUCT 8) -- so the rule keys off the class the settings put on
+     the root rather than being unconditional. */
+  :root.print-chapter-page .chapter {
+    break-before: page;
+  }
+
+  /* The first chapter must not push a blank sheet out in front of it. */
+  :root.print-chapter-page .chapter:first-child {
+    break-before: auto;
+  }
+
+  /* A heading at the foot of a page with its text overleaf is the commonest
+     print defect there is. */
+  .usfm-mt1,
+  .usfm-mt2,
+  .usfm-mt3,
+  .usfm-s,
+  .usfm-s1,
+  .usfm-s2,
+  .usfm-r,
+  .usfm-chapter {
+    break-after: avoid;
+  }
+
+  /* A poetic line broken across pages stops being a line; a table row broken
+     across pages stops being a row. */
+  [class*="usfm-q"],
+  [class*="usfm-li"],
+  tr,
+  .usfm-figure {
+    break-inside: avoid;
+  }
+
+  .usfm-para {
+    orphans: 2;
+    widows: 2;
+  }
+
+  /* USFM's own page-break marker. Honouring it is not scope creep: the format
+     defines it, and print is the one place the preview legitimately knows
+     that pages exist. */
+  .usfm-pb {
+    break-before: page;
+  }
+
+  /*
+   * Notes are collected, not floated.
+   *
+   * Per-page footnotes need `float: footnote`, which no browser has. PRODUCT 8
+   * offers end of chapter or end of document instead and states the limitation
+   * in the panel rather than approximating it badly.
+   *
+   * The preview renders both collections always and prints one, which is why
+   * the choice can be a class rather than a re-render. They are `aria-hidden`
+   * on screen: a note read out twice is worse than a note not printed.
+   */
+  .usfm-note-body {
+    display: none !important;
+  }
+
+  .usfm-caller {
+    color: #000 !important;
+  }
+
+  /*
+   * Numbered by the browser, in document order.
+   *
+   * The file's own caller is usually `+`, which means "number this for me" --
+   * a list of twenty identical plus signs at the end of a chapter is not a
+   * reference to anything. Two counters incremented in the same order give the
+   * caller and its entry the same number without either knowing about the
+   * other.
+   */
+  .preview {
+    counter-reset: note-caller note-entry;
+  }
+
+  :root.print-notes-chapter .chapter {
+    counter-reset: note-caller note-entry;
+  }
+
+  .usfm-caller {
+    counter-increment: note-caller;
+  }
+
+  /* The caller's own glyph is replaced by the number, not joined to it: the
+     file usually writes `+`, and `+1` is not a footnote marker. */
+  .usfm-caller {
+    font-size: 0 !important;
+  }
+
+  /* `rem`, not `em`. The rule above sets this element to zero, and `0.7em` of
+     zero is zero -- the numbers would be generated and print invisibly, which
+     is the worst of both. `rem` is relative to the root and unaffected. */
+  .usfm-caller::after {
+    content: counter(note-caller);
+    vertical-align: super;
+    font-size: 0.7rem;
+  }
+
+  .usfm-notes {
+    display: none;
+    margin-block-start: 1.2em;
+    padding-block-start: 0.5em;
+    border-block-start: 1px solid #000;
+    font-size: 0.85em;
+    break-inside: avoid;
+  }
+
+  :root.print-notes-chapter .usfm-notes-chapter,
+  :root.print-notes-document .usfm-notes-document {
+    display: block;
+  }
+
+  .usfm-notes-entry {
+    counter-increment: note-entry;
+    margin-block-end: 0.25em;
+  }
+
+  .usfm-notes-entry::before {
+    content: counter(note-entry) ". ";
+    font-weight: 600;
+  }
+
+  /* An image that was never loaded has nothing to print, and a dashed box
+     where a figure would be is worse than the caption alone. */
+  .usfm-figure-frame {
+    display: none !important;
+  }
+
+  /* Links cannot be followed on paper. The URL is in the title attribute for
+     anyone who wants it on screen; printing it inline would break the line
+     and say nothing a reader can act on. */
+  .usfm-link,
+  .usfm-ref {
+    color: #000 !important;
+    text-decoration: none !important;
+  }
+
+  .usfm-inert {
+    text-decoration: none !important;
+  }
+
+  /* Marks for characters that are not there. Meaningless on paper. */
+  .cm-invisible,
+  .usfm-milestone {
+    display: none !important;
+  }
+}

@@ -35,30 +35,55 @@
 
 mod backend;
 mod char16;
+mod completion;
 mod diagnostic;
 mod document;
 mod fidelity;
 pub mod grapheme;
 pub mod invariants;
+pub mod joiners;
 pub mod markers;
 mod node;
 mod normalize;
+pub(crate) mod reference;
 mod session;
 mod severity;
 mod span;
+mod text_span;
 mod usj;
 mod verse;
 mod version;
 
 pub use char16::{Char16, Char16Range, Utf16Mapper};
+pub use completion::{completions, frequencies, Completion, Context as CompletionContext};
 pub use diagnostic::{Diagnostic, DiagnosticCode, Severity};
 pub use document::Document;
 pub use fidelity::{DecodeError, Eol, FileFidelity, LineEndings, Loaded};
 pub use node::{Attribute, Marker, Node, NodeKind};
 pub use normalize::NormalizedIndex;
+pub use reference::{decimal_value, parse_digits, Reference, Resolution};
 pub use session::{Applied, Chunk, Edit, EditError, Session};
 pub use severity::DiagnosticConfig;
 pub use span::ByteSpan;
+pub use text_span::{locate as locate_text, Cursor as TextCursor};
 pub use usj::to_usj;
 pub use verse::{VerseEntry, VerseId, VerseIndex};
 pub use version::Version;
+
+mod checksum;
+mod token;
+
+/// The starting point for a new document (PRODUCT 6.3).
+///
+/// Here rather than in either shell because there are two of them, and a
+/// second copy is a second answer to "what does New give me" that depends on
+/// whether you opened the desktop application or the web one.
+///
+/// The book code is deliberately a placeholder: PRODUCT 6.3 puts the cursor
+/// after it and expects the book-code diagnostic to fire immediately, which
+/// is the intended teaching moment.
+pub const NEW_DOCUMENT: &str =
+    "\\id XXA\n\\h \n\\toc1 \n\\toc2 \n\\toc3 \n\\mt1 \n\\c 1\n\\p\n\\v 1 \n";
+
+pub use checksum::checksum;
+pub use token::{Token, TokenKind};

@@ -1,0 +1,21 @@
+{
+  "_comment": [
+    "Pinned performance baselines (P4.5). Ratios against the calibration",
+    "loop in benches/engine.rs, not nanoseconds -- a hosted runner is not",
+    "the machine these were recorded on, and a ratio cancels that out.",
+    "",
+    "Regenerate deliberately, never to make a red build green:",
+    "  cargo bench -p easy-usfm-core --bench engine -- --json > results.json",
+    "  node scripts/check-bench.mjs --update results.json",
+    "A number that moved because the work genuinely changed is worth",
+    "re-recording in the commit that changed it. A number that moved",
+    "because something got slower is what this file exists to catch."
+  ],
+  "tolerance": 1.2,
+  "ratios": {
+    "open_small": 0.000608,
+    "open_large": 0.012491,
+    "diagnostics_large": 0.555917,
+    "keystroke": 0.663465
+  }
+}

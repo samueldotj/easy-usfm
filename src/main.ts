@@ -2,6 +2,8 @@ import { mount } from "svelte";
 
 import "./app.css";
 import "./styles/codemirror.css";
+// Last, so its overrides win on order as well as on specificity (PRODUCT 8).
+import "./styles/print.css";
 import App from "./App.svelte";
 
 // Applies the stored theme before the first paint, so a dark-theme user does

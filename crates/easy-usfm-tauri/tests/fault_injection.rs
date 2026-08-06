@@ -87,6 +87,25 @@ impl FileSystem for FaultyFs {
         self.inner.exists(path)
     }
 
+    // Directory operations pass straight through. The faults this fake injects
+    // are the save ladder's -- a refused write, a refused replace, a failed
+    // sync -- and none of them is about a directory listing.
+    fn create_dir_all(&self, path: &Path) -> io::Result<()> {
+        self.inner.create_dir_all(path)
+    }
+
+    fn read_dir(&self, path: &Path) -> io::Result<Vec<PathBuf>> {
+        self.inner.read_dir(path)
+    }
+
+    fn remove_dir_all(&self, path: &Path) -> io::Result<()> {
+        self.inner.remove_dir_all(path)
+    }
+
+    fn modified(&self, path: &Path) -> io::Result<std::time::SystemTime> {
+        self.inner.modified(path)
+    }
+
     fn canonicalize(&self, path: &Path) -> io::Result<PathBuf> {
         self.inner.canonicalize(path)
     }

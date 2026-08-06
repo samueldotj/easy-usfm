@@ -9,7 +9,7 @@
 //! Agreement between chunked and whole-document parsing is asserted across the
 //! corpus by P0.5. What is here is the mechanics.
 
-use easy_usfm_core::{ByteSpan, Document, Edit, EditError, NodeKind, Session};
+use easy_usfm_core::{ByteSpan, Document, Edit, EditError, NodeKind, Session, Version};
 
 fn book(chapters: usize, verses_per_chapter: usize) -> String {
     let mut text = String::from("\\id GEN Genesis\n\\h Genesis\n");
@@ -324,6 +324,138 @@ fn a_chapter_chunk_does_not_report_the_missing_book_identification() {
 }
 
 #[test]
+fn a_document_with_chapters_does_not_report_them_missing() {
+    // The header chunk is *defined* as everything before the first `\c`, so it
+    // never contains one and the parser always reports it missing there.
+    // Treating the header as the authority put a false Error on every
+    // well-formed document in the corpus, including this one.
+    let session = Session::new("\\id GEN\n\\c 1\n\\p\n\\v 1 hello\n");
+
+    assert_eq!(
+        session.diagnostics(),
+        vec![],
+        "a well-formed document reported a diagnostic"
+    );
+}
+
+#[test]
+fn a_document_with_no_chapters_still_reports_them_missing() {
+    // Suppressing it per chunk must not lose it. The question moved to Tier 3,
+    // where the chunk list is visible; it did not go away.
+    let session = Session::new("\\id GEN\n\\p\n\\v 1 no chapter anywhere\n");
+    let missing: Vec<_> = session
+        .diagnostics()
+        .into_iter()
+        .filter(|d| d.code == easy_usfm_core::DiagnosticCode::MissingChapterMarker)
+        .collect();
+
+    assert_eq!(missing.len(), 1, "expected exactly one, got {missing:?}");
+    assert_eq!(missing[0].span, ByteSpan::new(0, 0));
+}
+
+#[test]
+fn a_chapter_is_not_reported_missing_once_per_chapter() {
+    // The failure mode the per-chunk filter exists to prevent, in the other
+    // direction: five chapters must not mean five copies of anything.
+    let session = Session::new(book(5, 2));
+    let missing = session
+        .diagnostics()
+        .iter()
+        .filter(|d| d.code == easy_usfm_core::DiagnosticCode::MissingChapterMarker)
+        .count();
+
+    assert_eq!(missing, 0);
+}
+
+// --------------------------------------------------------------- version ---
+
+#[test]
+fn a_document_that_declares_nothing_is_reported_as_declaring_nothing() {
+    // Not the same as declaring the assumed version. Most files in circulation
+    // carry no \usfm line and are valid, so the status bar has to be able to
+    // say "assumed" rather than claim a declaration the file never made.
+    let session = Session::new("\\id GEN\n\\c 1\n");
+
+    assert_eq!(session.detected_version(), None);
+    assert_eq!(session.document_version(), Version::ASSUMED);
+    assert!(!session.version_is_overridden());
+}
+
+#[test]
+fn typing_a_usfm_line_changes_the_version_without_reopening() {
+    let mut session = Session::new("\\id GEN\n\\c 1\n\\p\n\\v 1 a\n");
+    assert_eq!(session.detected_version(), None);
+
+    session
+        .edit(ByteSpan::new(8, 8), "\\usfm 3.1\n")
+        .expect("insert the declaration");
+
+    assert_eq!(session.detected_version(), Some(Version::V3_1));
+    assert_eq!(session.document_version(), Version::V3_1);
+}
+
+#[test]
+fn deleting_the_usfm_line_returns_to_the_assumed_version() {
+    let source = "\\id GEN\n\\usfm 2.0\n\\c 1\n";
+    let mut session = Session::new(source);
+    assert_eq!(session.detected_version(), Some(Version::V2_0));
+
+    session
+        .edit(ByteSpan::new(8, 18), "")
+        .expect("delete the declaration");
+
+    assert_eq!(session.detected_version(), None);
+    assert_eq!(session.document_version(), Version::ASSUMED);
+}
+
+#[test]
+fn an_override_beats_the_declaration_and_survives_an_edit() {
+    // Someone who has said "treat this as 2.0" has not asked to be
+    // second-guessed the next time they touch the header.
+    let mut session = Session::new("\\id GEN\n\\usfm 3.1\n\\c 1\n\\p\n\\v 1 a\n");
+    session.override_version(Some(Version::V2_0));
+
+    assert_eq!(session.document_version(), Version::V2_0);
+    assert_eq!(session.detected_version(), Some(Version::V3_1));
+    assert!(session.version_is_overridden());
+
+    session
+        .edit(ByteSpan::new(31, 31), "b")
+        .expect("type in the body");
+    assert_eq!(session.document_version(), Version::V2_0);
+
+    // Clearing it returns to what the file says, not to the assumed default.
+    session.override_version(None);
+    assert_eq!(session.document_version(), Version::V3_1);
+    assert!(!session.version_is_overridden());
+}
+
+#[test]
+fn overriding_the_version_shifts_severity_without_reparsing() {
+    // \esb arrived in 3.1. Against a document declaring 3.0 that is worth
+    // mentioning; against one declaring 3.1 it is not. Nothing about the text
+    // changes between these two states -- only the judgement.
+    let source = "\\id GEN\n\\usfm 3.0\n\\c 1\n\\p\n\\esb\n\\p body\n\\esbe\n";
+    let mut session = Session::new(source);
+
+    let newer = |session: &Session| {
+        session
+            .diagnostics()
+            .iter()
+            .filter(|d| d.code == easy_usfm_core::DiagnosticCode::MarkerNewerThanDocument)
+            .count()
+    };
+
+    assert_eq!(newer(&session), 1, "3.0 should flag \\esb as newer");
+
+    session.override_version(Some(Version::V3_1));
+    assert_eq!(newer(&session), 0, "3.1 should not");
+
+    session.override_version(Some(Version::V2_0));
+    assert!(newer(&session) >= 1, "2.0 should flag it again");
+}
+
+#[test]
 fn duplicate_chapters_are_caught_across_chunks() {
     // No chunk can see this on its own -- it is Tier 3's to report.
     let session = Session::new("\\id GEN\n\\c 1\n\\p\n\\v 1 a\n\\c 1\n\\p\n\\v 1 b\n");
@@ -528,3 +660,79 @@ fn chunked_reparse_beats_reparsing_the_whole_document() {
         "chunking bought less than a 10x improvement: {incremental:?} against {whole:?}"
     );
 }
+
+// ------------------------------------------------------------ completion ---
+
+/// The context at the position `@` marks, which stands where the `\` is.
+fn context_at(marked: &str) -> easy_usfm_core::CompletionContext {
+    let at = marked.find('@').expect("mark the position with @");
+    Session::new(marked.replace('@', "")).completion_context(at)
+}
+
+#[test]
+fn a_backslash_at_the_start_of_a_line_is_line_initial() {
+    let context = context_at(SRC_LINE_START);
+    assert!(context.line_initial);
+    assert_eq!(context.inside, None);
+}
+
+#[test]
+fn indentation_does_not_stop_a_marker_being_line_initial() {
+    // Leading whitespace before a marker occurs in hand-edited files, and the
+    // marker is still the first thing on the line.
+    assert!(context_at(SRC_INDENTED).line_initial);
+}
+
+#[test]
+fn a_backslash_after_text_is_not_line_initial() {
+    assert!(!context_at(SRC_MID_LINE).line_initial);
+}
+
+#[test]
+fn a_position_inside_a_character_marker_reports_it() {
+    // What decides whether the completion needs the `+` nesting prefix.
+    assert_eq!(context_at(SRC_INSIDE_BD).inside.as_deref(), Some("bd"));
+}
+
+#[test]
+fn a_position_outside_every_character_marker_reports_none() {
+    assert_eq!(context_at(SRC_AFTER_BD).inside, None);
+}
+
+#[test]
+fn the_innermost_marker_wins() {
+    assert_eq!(context_at(SRC_NESTED).inside.as_deref(), Some("it"));
+}
+
+// Raw strings, so the markers read as they do in a file. `@` stands where the
+// backslash being completed is.
+const SRC_LINE_START: &str = r"\id GEN
+\c 1
+@\p
+\v 1 a
+";
+const SRC_INDENTED: &str = r"\id GEN
+\c 1
+\p
+   @\q1 a
+";
+const SRC_MID_LINE: &str = r"\id GEN
+\c 1
+\p
+\v 1 some text @\bd
+";
+const SRC_INSIDE_BD: &str = r"\id GEN
+\c 1
+\p
+\v 1 \bd bold @\bd*
+";
+const SRC_AFTER_BD: &str = r"\id GEN
+\c 1
+\p
+\v 1 \bd bold\bd* plain @
+";
+const SRC_NESTED: &str = r"\id GEN
+\c 1
+\p
+\v 1 \bd b \+it i @\+it*\bd*
+";

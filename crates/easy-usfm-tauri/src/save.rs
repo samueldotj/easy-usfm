@@ -177,7 +177,7 @@ pub fn save<F: FileSystem>(fs: &F, path: &Path, bytes: &[u8]) -> Result<Saved, S
 
 /// Which step of rung 1 gave way. The distinction decides whether stepping
 /// down to rung 2 is safe.
-enum RungOneFailure {
+pub(crate) enum RungOneFailure {
     Write(io::Error),
     Replace(io::Error),
     Sync(io::Error),
@@ -192,7 +192,7 @@ impl RungOneFailure {
 }
 
 /// Rung 1 — write a temp beside the target, then replace.
-fn rung_one<F: FileSystem>(fs: &F, target: &Path, bytes: &[u8]) -> Result<(), RungOneFailure> {
+pub(crate) fn rung_one<F: FileSystem>(fs: &F, target: &Path, bytes: &[u8]) -> Result<(), RungOneFailure> {
     let temp = temp_beside(target);
 
     // The temp is created in the target's own directory, never in $TMPDIR: a
