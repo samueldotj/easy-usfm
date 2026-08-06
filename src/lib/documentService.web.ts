@@ -230,6 +230,15 @@ export function webDocuments(): DocumentService {
       // Nothing is stored, so nothing has to be forgotten.
     },
 
+    async examine(): Promise<null> {
+      // No processes to ask about, and nothing stored to recover. P4.6 brings
+      // the cross-tab half of this with `navigator.locks`.
+      return null;
+    },
+
+    async takeLock(): Promise<void> {},
+    async releaseLock(): Promise<void> {},
+
     async readFigure(): Promise<Uint8Array | null> {
       // SECURITY §3: "the web build never loads local images". A browser has
       // no path to the folder the file came from -- the File System Access API

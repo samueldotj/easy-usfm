@@ -31,10 +31,17 @@ tauri-plugin-opener = "2.5.4"
 # ReplaceFileW, not MoveFileEx. FILE-FIDELITY §2: ReplaceFileW preserves the
 # destination's ACLs, attributes, creation time, object ID, and alternate data
 # streams; MoveFileEx discards them.
+# `kill(pid, 0)` is the portable way to ask whether a process is alive, and
+# there is no way to ask it from the standard library.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = [
   "Win32_Foundation",
   "Win32_Storage_FileSystem",
+  # Asking whether the process that held a lock is still running (P4.2).
+  "Win32_System_Threading",
 ] }
 
 [dev-dependencies]

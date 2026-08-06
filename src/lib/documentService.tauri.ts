@@ -16,6 +16,7 @@ import type {
   Editable,
   Opened,
   SaveOutcome,
+  Reopen,
   SnapshotState,
   Summary,
 } from "./documentService";
@@ -169,6 +170,18 @@ export function tauriDocuments(): DocumentService {
     async clearSnapshots(document: Editable): Promise<void> {
       if (document.id === null) return;
       await invoke("clear_recovery", { id: document.id, path: document.path });
+    },
+
+    async examine(path: string): Promise<Reopen> {
+      return invoke<Reopen>("examine_document", { path });
+    },
+
+    async takeLock(path: string): Promise<void> {
+      await invoke("take_lock", { path });
+    },
+
+    async releaseLock(path: string): Promise<void> {
+      await invoke("release_lock", { path });
     },
   };
 }

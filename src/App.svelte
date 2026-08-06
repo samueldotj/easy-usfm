@@ -8,6 +8,7 @@
   import GoToReference from "./components/GoToReference.svelte";
   import Preview from "./components/preview/Preview.svelte";
   import PrintSettings from "./components/PrintSettings.svelte";
+  import RecoveryPrompt from "./components/RecoveryPrompt.svelte";
   import SplitPane from "./components/SplitPane.svelte";
   import Toolbar from "./components/Toolbar.svelte";
   import VersionPicker from "./components/VersionPicker.svelte";
@@ -27,6 +28,7 @@
   let find: FindBar | undefined = $state();
   let preview: Preview | undefined = $state();
   let printSettings: PrintSettings | undefined = $state();
+  let recoveryPrompt: RecoveryPrompt | undefined = $state();
   let error = $state<string | null>(null);
   let panelOpen = $state(true);
   /**
@@ -165,6 +167,71 @@ ${href}`)) return;
     await run(async () => {
       if (await action()) snapshots.settled();
     });
+  }
+
+  /**
+   * Asks what is waiting for the file just opened, and acts on it
+   * (FILE-FIDELITY 4, P4.2).
+   *
+   * Three outcomes. Another live instance holds it, so the editor refuses
+   * edits until the user takes over. A session did not finish and left work
+   * that differs from disk, so the offer is made -- and it is an offer, never
+   * applied on its own. Otherwise the lock is taken and the file is just open.
+   */
+  async function claim(): Promise<void> {
+    doc.readOnly = false;
+    doc.heldBy = null;
+
+    const path = doc.path;
+    // A document never saved has no file for anyone to hold and no snapshot
+    // filed under a path.
+    if (!path) return;
+
+    const waiting = await doc.examine(path);
+    if (!waiting) return;
+
+    if (waiting.held.state === "foreign") {
+      doc.readOnly = true;
+      doc.heldBy = waiting.held.owner;
+      // Deliberately no lock taken and no recovery offered. Both belong to the
+      // instance that has it.
+      return;
+    }
+
+    await doc.takeOver(path);
+    if (waiting.recovery) recoveryPrompt?.ask(waiting.recovery);
+  }
+
+  /**
+   * Detaches the buffer from the file, so it can be saved elsewhere.
+   *
+   * The text is kept and the path is dropped, which turns Save into Save As.
+   * Nothing is copied on disk -- the user chooses where it goes.
+   */
+  async function openCopy(): Promise<void> {
+    const held = doc.path;
+    doc.detach();
+    doc.readOnly = false;
+    doc.heldBy = null;
+    if (held) void doc.releaseLock(held);
+  }
+
+  /**
+   * Claims a file another live instance holds.
+   *
+   * Confirmed, because §4 asks for the warning: the other window still has the
+   * document and may save over whatever is written here.
+   */
+  async function takeOver(): Promise<void> {
+    const path = doc.path;
+    if (!path) return;
+    const warning = [
+      "Another Easy USFM window has this file open.",
+      "Taking over does not close it, and that window may still save over your changes.",
+      "Take over anyway?",
+    ].join("\n\n");
+    if (!confirm(warning)) return;
+    await doc.takeOver(path);
   }
 
   const counts = $derived(engine.counts);
@@ -385,9 +452,13 @@ ${href}`)) return;
     // in the interface, and that is not the same as choosing to lose them --
     // the snapshot is what makes the choice reversible.
     snapshots.flush();
+    // The document being replaced is no longer ours to hold.
+    const leaving = doc.path;
     await run(action);
     // The new document starts with nothing outstanding.
     snapshots.settled();
+    if (leaving && leaving !== doc.path) void doc.releaseLock(leaving);
+    await claim();
     editor?.load(doc.text);
     // A new document is not an edit to the old one; the engine gets the whole
     // text rather than a delta it could not make sense of.
@@ -409,7 +480,20 @@ ${href}`)) return;
     const window = getCurrentWindow();
 
     await window.onCloseRequested(async (event) => {
-      if (!(await doc.confirmDiscard())) event.preventDefault();
+      if (!(await doc.confirmDiscard())) {
+        event.preventDefault();
+        return;
+      }
+
+      // A clean close, so this file is no longer ours (FILE-FIDELITY 4). Left
+      // behind, the lock reads as a crash on the next launch and offers a
+      // recovery nobody needs. Awaited: the window is about to be destroyed,
+      // and a promise in flight when that happens never lands.
+      const held = doc.path;
+      if (held) await doc.releaseLock(held);
+      // The user chose to discard, so there is nothing outstanding worth
+      // keeping -- and a snapshot written here would be offered back next time.
+      if (!doc.dirty) await doc.clearSnapshots();
     });
   }
 
@@ -509,6 +593,39 @@ ${href}`)) return;
 
   <PrintSettings bind:this={printSettings} saved={doc.path !== null} />
 
+  <RecoveryPrompt
+    bind:this={recoveryPrompt}
+    onrestore={(recovery) => {
+      doc.restore(recovery.text);
+      editor?.load(doc.text);
+      engine.open(doc.text);
+      void fonts.inspect(doc.text);
+      showInvisibles = hasInvisibles(doc.text);
+      // Where the caret was when the snapshot was taken, so the reader lands
+      // where they left off rather than at the top of a file they were in the
+      // middle of.
+      editor?.reveal(recovery.cursor, recovery.cursor);
+      // Restored work is unsaved by definition, so the schedule starts again.
+      snapshots.changed();
+    }}
+    ondiscard={() => void doc.clearSnapshots()}
+  />
+
+  {#if doc.readOnly}
+    <!--
+      Non-modal, because the file is perfectly readable and the user may have
+      opened it only to look. FILE-FIDELITY 4's two choices are here rather
+      than in a dialog that has to be dismissed before anything can be seen.
+    -->
+    <p class="held" role="status">
+      Another Easy USFM window has this file open{doc.heldBy
+        ? ` (process ${doc.heldBy.pid})`
+        : ""}. It is read-only here.
+      <button type="button" onclick={() => void openCopy()}>Open a copy</button>
+      <button type="button" onclick={() => void takeOver()}>Take over</button>
+    </p>
+  {/if}
+
   {#if error}
     <p class="error" role="alert">{error}</p>
   {/if}
@@ -545,6 +662,7 @@ ${href}`)) return;
           }}
           oncomplete={(at) => engine.completions(at)}
           {showInvisibles}
+          readOnly={doc.readOnly}
           onscroll={editorScrolled}
         />
       {/snippet}
@@ -669,6 +787,38 @@ ${href}`)) return;
     /* The reference may carry a published number in any script (UNICODE §6). */
     font-family: var(--font-content);
     font-variant-numeric: tabular-nums;
+  }
+
+  /* Another window has this file. A notice rather than a dialog: the file is
+     perfectly readable and someone may have opened it only to look. */
+  .held {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    margin: 0;
+    padding-block: 0.4rem;
+    padding-inline: 0.75rem;
+    background: var(--surface-sunken);
+    border-block-end: 1px solid var(--border);
+    color: var(--text);
+    font-size: 0.8125rem;
+  }
+
+  .held button {
+    padding-block: 0.1rem;
+    padding-inline: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    color: inherit;
+    font: inherit;
+    font-size: inherit;
+    cursor: pointer;
+  }
+
+  .held button:hover {
+    border-color: var(--accent);
   }
 
   .error {

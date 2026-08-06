@@ -12,8 +12,10 @@
 pub mod document;
 pub mod figure;
 pub mod fs;
+pub mod lock;
 pub mod menu;
 pub mod recovery;
+pub mod reopen;
 pub mod save;
 
 use document::Documents;
@@ -38,6 +40,9 @@ pub fn run() {
         // webview -- a link opened there runs in this application's origin.
         .plugin(tauri_plugin_opener::init())
         .manage(Documents::default())
+        // Fixed for the process's lifetime, so a pid recorded in a lock can be
+        // told apart from the same number reused by something else (P4.2).
+        .manage(recovery::Started(lock::now_ms()))
         .setup(|app| {
             // Empty to begin with; the interface pushes its recent list once
             // it has read its settings.
@@ -69,6 +74,9 @@ pub fn run() {
             figure::read_figure,
             recovery::snapshot_document,
             recovery::clear_recovery,
+            recovery::examine_document,
+            recovery::take_lock,
+            recovery::release_lock,
         ])
         .run(tauri::generate_context!())
         .expect("the application failed to start");

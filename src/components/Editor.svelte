@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Annotation, EditorState } from "@codemirror/state";
+  import { Annotation, Compartment, EditorState } from "@codemirror/state";
   import { EditorView, keymap, lineNumbers, highlightActiveLine, drawSelection } from "@codemirror/view";
   import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
   import { autocompletion, completionKeymap } from "@codemirror/autocomplete";
@@ -36,6 +36,13 @@
     showInvisibles?: boolean;
     /** The editor was scrolled. The preview follows (P3.6). */
     onscroll?: () => void;
+    /**
+     * Refuse edits (FILE-FIDELITY §4).
+     *
+     * Another instance holds this file, so typing into it would produce work
+     * that the other window is about to save over.
+     */
+    readOnly?: boolean;
   }
 
   let {
@@ -49,6 +56,7 @@
     oncomplete,
     showInvisibles = false,
     onscroll,
+    readOnly = false,
   }: Props = $props();
 
   /**
@@ -60,6 +68,15 @@
    * and the close warning fires on a document nobody touched.
    */
   const External = Annotation.define<boolean>();
+
+  /**
+   * The read-only flag, in a compartment so it can be changed later.
+   *
+   * `EditorState.readOnly` is a static facet; without a compartment it would be
+   * fixed at construction, and taking over a file another instance held would
+   * leave the editor refusing edits until the window was reopened.
+   */
+  const readOnlyState = new Compartment();
 
   let host: HTMLDivElement;
   let view: EditorView | undefined;
@@ -124,6 +141,11 @@
           tokenRequests((from, to) => ontokenrange?.(from, to)),
 
           invisibles,
+
+          // Read-only rather than disabled: the text stays selectable and
+          // copyable, which is most of what someone does with a file another
+          // window has open.
+          readOnlyState.of(EditorState.readOnly.of(readOnly)),
 
           // UNICODE §8. Set on the content rather than inherited, because a
           // document beginning `\v 1` auto-detects as left-to-right and would
@@ -200,6 +222,12 @@
   // a view plugin is not asked to update when a component's variable moves.
   $effect(() => {
     view?.dispatch({ effects: setShowInvisibles.of(showInvisibles) });
+  });
+
+  // Same reason, and it matters more: a stale value here is the difference
+  // between refusing edits and accepting them.
+  $effect(() => {
+    view?.dispatch({ effects: readOnlyState.reconfigure(EditorState.readOnly.of(readOnly)) });
   });
 
   /**

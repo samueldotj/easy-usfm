@@ -87,11 +87,50 @@ export interface DocumentService {
   snapshot(document: Editable, state: SnapshotState): Promise<void>;
   /** Forgets them, on a clean save or a clean close. */
   clearSnapshots(document: Editable): Promise<void>;
+  /**
+   * Who holds a file, and whether unsaved work is waiting (FILE-FIDELITY §4).
+   *
+   * Asked before the file is shown, because the answer decides what is shown.
+   * `null` where the host cannot answer — a browser has no processes to ask
+   * about and no snapshots yet (P4.6).
+   */
+  examine(path: string): Promise<Reopen | null>;
+  /** Records this process as the holder. */
+  takeLock(path: string): Promise<void>;
+  /** Gives it up, on a clean close. */
+  releaseLock(path: string): Promise<void>;
   /** What this host cannot do, for the interface to say plainly. */
   readonly limitations: readonly string[];
 }
 
 /** What a service needs to know about the document to save it. */
+/** Who has a file open, if anyone (FILE-FIDELITY §4). */
+export type Held =
+  | { state: "free" }
+  | { state: "ours" }
+  | { state: "foreign"; owner: Owner }
+  | { state: "crashed"; owner: Owner };
+
+export interface Owner {
+  pid: number;
+  started_at: number;
+  host: string;
+  app_version: string;
+}
+
+/** Unsaved work from a session that did not finish. */
+export interface Recovery {
+  taken_at: number;
+  lines_differing: number;
+  text: string;
+  cursor: number;
+}
+
+export interface Reopen {
+  held: Held;
+  recovery: Recovery | null;
+}
+
 /**
  * What a snapshot records beyond the text (FILE-FIDELITY §4).
  *

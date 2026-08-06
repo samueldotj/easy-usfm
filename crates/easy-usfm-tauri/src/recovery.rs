@@ -233,6 +233,78 @@ fn older_than(taken_at: u64, now: SystemTime, age: Duration) -> bool {
     now.saturating_sub(taken_at) > age.as_millis() as u64
 }
 
+/// The newest generation held for a document, if any.
+///
+/// Newest by directory name, for the same reason retention uses it: a coarse
+/// or wrong mtime would offer the user an older snapshot than the one that
+/// exists, silently.
+///
+/// A generation missing either file is skipped rather than failing the whole
+/// read — that is a snapshot interrupted between its two writes, and the one
+/// before it is still perfectly good.
+pub fn newest<F: FileSystem>(filesystem: &F, root: &Path, canonical: &Path) -> Option<(Meta, String)> {
+    let directory = directory_for(root, canonical);
+    let mut generations: Vec<(u64, PathBuf)> = filesystem
+        .read_dir(&directory)
+        .ok()?
+        .into_iter()
+        .filter_map(|path| {
+            let name = path.file_name()?.to_str()?;
+            Some((name.parse::<u64>().ok()?, path))
+        })
+        .collect();
+
+    generations.sort_unstable_by_key(|(taken_at, _)| std::cmp::Reverse(*taken_at));
+
+    for (_, path) in generations {
+        let Ok(meta) = filesystem.read(&path.join("meta.json")) else {
+            continue;
+        };
+        let Ok(text) = filesystem.read(&path.join("snapshot.usfm")) else {
+            continue;
+        };
+        let Ok(meta) = serde_json::from_slice::<Meta>(&meta) else {
+            continue;
+        };
+        let Ok(text) = String::from_utf8(text) else {
+            continue;
+        };
+        return Some((meta, text));
+    }
+    None
+}
+
+/// How many lines differ between a snapshot and what is on disk.
+///
+/// FILE-FIDELITY §4 wants the prompt to say *"37 lines differ"*, so the number
+/// has to mean something. Counted as the size of the symmetric difference by
+/// line position: lines present in one and not the other at the same index,
+/// plus the length difference where one is longer.
+///
+/// Not a real diff. An edit-script distance would be a better number and a
+/// worse trade — it is quadratic in the document, this runs on a file that may
+/// be two megabytes, and the user is being asked a yes-or-no question about
+/// whether their unsaved work is worth keeping. A count that is occasionally
+/// generous is fine; a prompt that takes four seconds to appear is not.
+pub fn lines_differing(snapshot: &str, disk: &str) -> usize {
+    let mut left = snapshot.lines();
+    let mut right = disk.lines();
+    let mut differing = 0;
+
+    loop {
+        match (left.next(), right.next()) {
+            (None, None) => return differing,
+            (Some(a), Some(b)) => {
+                if a != b {
+                    differing += 1;
+                }
+            }
+            // One ran out: everything remaining in the other is a difference.
+            (Some(_), None) | (None, Some(_)) => differing += 1,
+        }
+    }
+}
+
 // -------------------------------------------------------------- commands ---
 
 /// Where snapshots live: `recovery/` inside the application's data directory.
@@ -299,6 +371,83 @@ pub fn snapshot_document<R: tauri::Runtime>(
     .map(|_| ())
     .map_err(|error| error.to_string())
 }
+
+/// What is waiting for a document about to be opened (FILE-FIDELITY 4).
+///
+/// Asked before the file is shown, because the answer decides what is shown:
+/// a read-only window when another instance holds it, a recovery prompt when a
+/// session did not finish, the file itself otherwise.
+#[tauri::command]
+pub fn examine_document<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    path: String,
+) -> Result<crate::reopen::Reopen, String> {
+    let root = root(&app)?;
+    let filesystem = crate::fs::RealFs;
+    let canonical = key(&filesystem, Some(&path), 0);
+
+    // What the file holds now, which is what a snapshot is compared against.
+    // Unreadable or absent is not an error here -- a file deleted while the
+    // editor was gone is exactly the case where the snapshot is the only copy
+    // left, and refusing to look would hide it.
+    let on_disk = filesystem
+        .read(&canonical)
+        .ok()
+        .and_then(|bytes| String::from_utf8(bytes).ok());
+
+    Ok(crate::reopen::examine(
+        &filesystem,
+        &root,
+        &canonical,
+        &owner(&app),
+        on_disk.as_deref(),
+    ))
+}
+
+/// Records this process as the holder of a document.
+#[tauri::command]
+pub fn take_lock<R: tauri::Runtime>(app: tauri::AppHandle<R>, path: String) -> Result<(), String> {
+    let root = root(&app)?;
+    let filesystem = crate::fs::RealFs;
+    crate::lock::take(
+        &filesystem,
+        &root,
+        &key(&filesystem, Some(&path), 0),
+        &owner(&app),
+    )
+    .map_err(|error| error.to_string())
+}
+
+/// Gives it up, on a clean close.
+#[tauri::command]
+pub fn release_lock<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    path: String,
+) -> Result<(), String> {
+    let root = root(&app)?;
+    let filesystem = crate::fs::RealFs;
+    crate::lock::release(
+        &filesystem,
+        &root,
+        &key(&filesystem, Some(&path), 0),
+        &owner(&app),
+    );
+    Ok(())
+}
+
+/// This process's identity, fixed for its lifetime.
+///
+/// The start time is what makes a pid meaningful: pids are recycled, so a
+/// number on its own may name a browser that took over a dead editor's slot.
+/// Recorded once at startup and held in state, because reading it again later
+/// would produce a different answer and nothing would ever match.
+fn owner<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> crate::lock::Owner {
+    use tauri::Manager;
+    crate::lock::Owner::current(app.state::<Started>().0)
+}
+
+/// When this process started, in milliseconds since the epoch.
+pub struct Started(pub u64);
 
 /// Forgets a document's snapshots, on a clean save or a clean close.
 #[tauri::command]

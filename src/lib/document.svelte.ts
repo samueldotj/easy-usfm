@@ -13,6 +13,8 @@ import {
   documentService,
   type DocumentService,
   type Opened,
+  type Owner,
+  type Reopen,
   type SaveOutcome,
   type Summary,
 } from "./documentService";
@@ -117,14 +119,6 @@ class DocumentState {
   }
 
   /**
-   * The bytes of a figure this document asked for (SECURITY 3).
-   *
-   * Routed through the document because the document is what the request is
-   * scoped to: the shell resolves the path against *this* file's folder, and
-   * closing it is what ends the access. `null` where the host cannot load
-   * local files, which is every browser.
-   */
-  /**
    * Writes a recovery snapshot of what is in the editor now.
    *
    * Silent on failure, deliberately. A snapshot is a safety net nobody asked
@@ -149,6 +143,85 @@ class DocumentState {
     }
   }
 
+  /**
+   * Whether another instance holds this file, so the editor is read-only.
+   *
+   * FILE-FIDELITY 4: a live foreign process means "open read-only with Open a
+   * copy or Take over". Nothing here enforces it at the filesystem -- the lock
+   * is advisory -- so this is what the interface refuses on.
+   */
+  readOnly = $state(false);
+
+  /** Who holds it, when someone else does. For the notice to name them. */
+  heldBy = $state<Owner | null>(null);
+
+  /**
+   * Asks what is waiting for a file, before opening it.
+   *
+   * Returns the offer so the caller can prompt; taking the lock is separate,
+   * because taking over from a live instance is a choice the user makes.
+   */
+  async examine(path: string): Promise<Reopen | null> {
+    const service = await documentService();
+    return service.examine(path);
+  }
+
+  /**
+   * Gives the lock up, on a clean close or when moving to another file.
+   *
+   * Takes the path explicitly rather than reading `this.path`, because it is
+   * called *after* the document has moved on -- the file being released is no
+   * longer the one open.
+   */
+  async releaseLock(path: string): Promise<void> {
+    try {
+      const service = await documentService();
+      await service.releaseLock(path);
+    } catch {
+      // A lock left behind reads as a crash next time, which offers a recovery
+      // the user can decline. Not worth a dialog.
+    }
+  }
+
+  /**
+   * Detaches the buffer from the file it came from.
+   *
+   * FILE-FIDELITY 4's "Open a copy" for a file another instance holds. The text
+   * stays and the path goes, which turns Save into Save As -- nothing is copied
+   * on disk, because where the copy belongs is the user's decision. Dirty,
+   * because this buffer now exists nowhere else.
+   */
+  detach(): void {
+    this.path = null;
+    this.dirty = true;
+    this.id = null;
+  }
+
+  /** Takes the lock and stops refusing edits. */
+  async takeOver(path: string): Promise<void> {
+    const service = await documentService();
+    await service.takeLock(path);
+    this.readOnly = false;
+    this.heldBy = null;
+  }
+
+  /**
+   * Replaces the buffer with a recovered snapshot.
+   *
+   * Dirty on purpose. The work is not on disk -- that is the whole reason it
+   * was offered -- so the document has unsaved changes from the moment it is
+   * restored, and the close warning has to fire for them.
+   */
+  restore(text: string): void {
+    this.text = text;
+    this.dirty = true;
+    // Uniform, using whatever the file was opened as. The snapshot carries the
+    // document's dominant terminator rather than a per-line array — a recovered
+    // buffer has no history for the per-line map to have been carried through,
+    // and inventing one would be worse than a consistent file.
+    this.#eols = LineTerminators.uniform(countNewlines(text), this.#eols.dominant());
+  }
+
   /** Forgets them, on a clean save or a clean close (FILE-FIDELITY 4). */
   async clearSnapshots(): Promise<void> {
     try {
@@ -160,6 +233,14 @@ class DocumentState {
     }
   }
 
+  /**
+   * The bytes of a figure this document asked for (SECURITY 3).
+   *
+   * Routed through the document because the document is what the request is
+   * scoped to: the shell resolves the path against *this* file's folder, and
+   * closing it is what ends the access. `null` where the host cannot load
+   * local files, which is every browser.
+   */
   async readFigure(path: string): Promise<Uint8Array | null> {
     const service = await documentService();
     return service.readFigure(this.id, path);
@@ -269,3 +350,12 @@ class DocumentState {
 }
 
 export const doc = new DocumentState();
+
+/** How many line terminators a recovered buffer needs. */
+function countNewlines(text: string): number {
+  let count = 0;
+  for (const character of text) {
+    if (character === "\n") count += 1;
+  }
+  return count;
+}
