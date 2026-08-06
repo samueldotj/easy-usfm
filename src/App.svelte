@@ -436,8 +436,20 @@ ${href}`)) return;
         case "save-as":
           await saved(() => doc.saveAs());
           break;
-        case "focus-editor":
+        case "focus-preview":
+          focusPane("Preview");
+          break;
+
+        case "cycle-pane":
           cyclePanes(true);
+          break;
+
+        // Chooses, rather than cycling. PRODUCT 6.4 gives Ctrl+1 and Ctrl+2 as
+        // "focus editor / preview" and F6 separately as "cycle pane focus";
+        // this item was cycling, so the two shortcuts did the same thing and
+        // neither did what the table says.
+        case "focus-editor":
+          editor?.focus();
           break;
         case "print":
           printSettings?.open();
@@ -542,6 +554,24 @@ ${href}`)) return;
     // list -- and falls back to the region only when there is nothing.
     const target = next?.querySelector<HTMLElement>("[data-pane-focus]") ?? next;
     target?.focus();
+  }
+
+  /**
+   * Puts focus in one named pane.
+   *
+   * Through the same `[data-pane]` regions F6 walks, rather than by reaching
+   * for a component's element: the scrolling `.preview` div is not focusable,
+   * so focusing it did nothing at all and Ctrl+2 was a shortcut that appeared
+   * to work and did not. Whatever inside the pane takes keys is the target,
+   * falling back to the region -- which is the rule F6 already follows.
+   */
+  function focusPane(label: string): void {
+    const pane = [...document.querySelectorAll<HTMLElement>("[data-pane]")].find(
+      (candidate) => candidate.getAttribute("aria-label") === label,
+    );
+    if (!pane) return;
+
+    (pane.querySelector<HTMLElement>("[data-pane-focus]") ?? pane).focus();
   }
 
   /** Anything that touches a file can fail; none of it should be silent. */

@@ -10,9 +10,27 @@
 //! the webview cannot draw one, and drawing something that looks like one is
 //! how applications end up feeling foreign on every platform at once.
 //!
-//! Per-platform refinement is P6.1: macOS wants the application menu first and
-//! Quit inside it, Linux conventions differ again. What is here is the
-//! structure and the accelerators, which is what P1.10 asked for.
+//! # Per platform (P6.1)
+//!
+//! Two kinds of difference, and they are not the same kind of thing.
+//!
+//! **Structure.** macOS puts an application menu first, with About, Services,
+//! Hide and Quit inside it, and nothing else may precede it. Windows and Linux
+//! put Exit at the foot of File and About under Help. This is not a preference:
+//! a macOS user looking for Quit looks in exactly one place, and an application
+//! that puts it under File is visibly not a Mac application.
+//!
+//! **Accelerators.** PRODUCT 6.4 gives a table with a column per platform, and
+//! most rows agree because `CmdOrCtrl` already covers them. Four do not, and
+//! each disagrees for a reason: on macOS, Cmd+G is Find Next by universal
+//! convention, which pushes Go to Reference to Cmd+L (as Xcode and VS Code do)
+//! and Replace to Option+Cmd+F. Following the table rather than translating
+//! Ctrl to Cmd is the whole point -- a mechanical translation produces exactly
+//! the bindings that fight the platform.
+//!
+//! Chosen with `cfg!` rather than at build time by feature, so both arms are
+//! type-checked on every platform and a rename cannot break the one nobody is
+//! compiling today.
 
 use tauri::menu::{
     AboutMetadata, Menu, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder,
@@ -25,6 +43,21 @@ pub const MENU_EVENT: &str = "menu";
 
 /// How many recent files the menu shows.
 const RECENT_SHOWN: usize = 10;
+
+/// Whether this build is for macOS, in a form both arms compile on.
+const MAC: bool = cfg!(target_os = "macos");
+
+/// One row of PRODUCT §6.4, for the four actions whose binding differs.
+///
+/// A function rather than a `cfg` block per item, so the two columns of the
+/// table sit next to each other and can be read against it.
+const fn shortcut(windows_linux: &'static str, macos: &'static str) -> &'static str {
+    if MAC {
+        macos
+    } else {
+        windows_linux
+    }
+}
 
 /// Builds the menu bar, with `recent` filling the Open Recent submenu.
 pub fn build<R: Runtime>(app: &AppHandle<R>, recent: &[String]) -> tauri::Result<Menu<R>> {
@@ -52,7 +85,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, recent: &[String]) -> tauri::Result
             .item(&MenuItemBuilder::with_id("recent:clear", "Clear Recent Files").build(app)?);
     }
 
-    let file = SubmenuBuilder::new(app, "&File")
+    let mut file = SubmenuBuilder::new(app, "&File")
         .item(
             &MenuItemBuilder::with_id("new", "&New")
                 .accelerator("CmdOrCtrl+N")
@@ -80,13 +113,19 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, recent: &[String]) -> tauri::Result
             &MenuItemBuilder::with_id("print", "&Print…")
                 .accelerator("CmdOrCtrl+P")
                 .build(app)?,
-        )
-        .separator()
-        // Predefined, so it does what the platform's own Quit does -- which
-        // includes going through the window's close handler, and therefore
-        // through the unsaved-changes prompt.
-        .item(&PredefinedMenuItem::quit(app, Some("E&xit"))?)
-        .build()?;
+        );
+
+    // Quit lives in the application menu on macOS, and nowhere else may claim
+    // it: a Mac user looking for it looks in exactly one place. Everywhere else
+    // it is Exit at the foot of File. Predefined either way, so it does what
+    // the platform's own Quit does -- which includes going through the
+    // window's close handler and therefore the unsaved-changes prompt.
+    if !MAC {
+        file = file
+            .separator()
+            .item(&PredefinedMenuItem::quit(app, Some("E&xit"))?);
+    }
+    let file = file.build()?;
 
     // Predefined throughout. These are handled by the webview itself, so
     // routing them through our own event would mean reimplementing undo.
@@ -110,17 +149,19 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, recent: &[String]) -> tauri::Result
         )
         .item(
             &MenuItemBuilder::with_id("replace", "&Replace…")
-                .accelerator("CmdOrCtrl+H")
+                // Ctrl+H is Delete Backwards on macOS, from emacs by way of
+                // the text system, so it is not available for Replace there.
+                .accelerator(shortcut("CmdOrCtrl+H", "Alt+Cmd+F"))
                 .build(app)?,
         )
         .item(
             &MenuItemBuilder::with_id("find-next", "Find &Next")
-                .accelerator("F3")
+                .accelerator(shortcut("F3", "Cmd+G"))
                 .build(app)?,
         )
         .item(
             &MenuItemBuilder::with_id("find-previous", "Find &Previous")
-                .accelerator("Shift+F3")
+                .accelerator(shortcut("Shift+F3", "Shift+Cmd+G"))
                 .build(app)?,
         )
         .build()?;
@@ -132,6 +173,19 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, recent: &[String]) -> tauri::Result
         .separator()
         .item(
             &MenuItemBuilder::with_id("focus-editor", "&Focus Editor")
+                .accelerator("CmdOrCtrl+1")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("focus-preview", "Focus Pre&view")
+                .accelerator("CmdOrCtrl+2")
+                .build(app)?,
+        )
+        .item(
+            // F6 cycles rather than choosing, which is the platform convention
+            // for moving between panes and is why it is a separate item from
+            // the two above (PRODUCT 6.4).
+            &MenuItemBuilder::with_id("cycle-pane", "&Cycle Pane Focus")
                 .accelerator("F6")
                 .build(app)?,
         )
@@ -145,12 +199,11 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, recent: &[String]) -> tauri::Result
         // beside the other one and not in a preferences dialog.
         .item(&MenuItemBuilder::with_id("toggle-images", "Show I&mages").build(app)?)
         .separator()
-        // Ctrl+G on Windows and Linux. macOS wants Cmd+L instead, because
-        // Cmd+G is Find Next by universal convention there — P6.1's per-
-        // platform pass is where that split belongs (PRODUCT §6.4).
+        // Cmd+G is Find Next on macOS by universal convention, so Go to
+        // Reference takes Cmd+L there -- which is what Xcode and VS Code do.
         .item(
             &MenuItemBuilder::with_id("go-to-reference", "&Go to Reference…")
-                .accelerator("CmdOrCtrl+G")
+                .accelerator(shortcut("CmdOrCtrl+G", "Cmd+L"))
                 .build(app)?,
         )
         .separator()
@@ -175,23 +228,60 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, recent: &[String]) -> tauri::Result
         )
         .build()?;
 
-    let help = SubmenuBuilder::new(app, "&Help")
-        .item(&PredefinedMenuItem::about(
-            app,
-            Some("&About Easy USFM"),
-            Some(AboutMetadata {
-                name: Some("Easy USFM".into()),
-                version: Some(env!("CARGO_PKG_VERSION").into()),
-                comments: Some("An editor for individual USFM Scripture files.".into()),
-                license: Some("MIT".into()),
-                website: Some("https://github.com/samueldotj/easy-usfm".into()),
-                ..Default::default()
-            }),
-        )?)
+    // The About box, which appears in a different menu on each platform but is
+    // the same item. Built once so the metadata cannot drift between them.
+    let about = PredefinedMenuItem::about(
+        app,
+        Some(if MAC { "About Easy USFM" } else { "&About Easy USFM" }),
+        Some(AboutMetadata {
+            name: Some("Easy USFM".into()),
+            version: Some(env!("CARGO_PKG_VERSION").into()),
+            comments: Some("An editor for individual USFM Scripture files.".into()),
+            license: Some("MIT".into()),
+            website: Some("https://github.com/samueldotj/easy-usfm".into()),
+            ..Default::default()
+        }),
+    )?;
+
+    let help = SubmenuBuilder::new(app, "&Help");
+    // On macOS About belongs in the application menu and Help holds only
+    // documentation. Putting it in both would be two About items.
+    let help = if MAC { help } else { help.item(&about) };
+    let help = help.build()?;
+
+    if !MAC {
+        return MenuBuilder::new(app)
+            .items(&[&file, &edit, &view, &help])
+            .build();
+    }
+
+    // The application menu: first, named for the application, and holding the
+    // items macOS puts nowhere else. Services, Hide, Hide Others and Show All
+    // are predefined because they are the system's, not ours -- an application
+    // that omits them is one whose Cmd+H does nothing.
+    let application = SubmenuBuilder::new(app, "Easy USFM")
+        .item(&about)
+        .separator()
+        .item(&PredefinedMenuItem::services(app, Some("Services"))?)
+        .separator()
+        .item(&PredefinedMenuItem::hide(app, Some("Hide Easy USFM"))?)
+        .item(&PredefinedMenuItem::hide_others(app, Some("Hide Others"))?)
+        .item(&PredefinedMenuItem::show_all(app, Some("Show All"))?)
+        .separator()
+        .item(&PredefinedMenuItem::quit(app, Some("Quit Easy USFM"))?)
+        .build()?;
+
+    // Window is a macOS convention with no equivalent elsewhere: Minimise and
+    // Zoom live there, and the system adds the window list to it itself.
+    let window = SubmenuBuilder::new(app, "Window")
+        .item(&PredefinedMenuItem::minimize(app, Some("Minimize"))?)
+        .item(&PredefinedMenuItem::maximize(app, Some("Zoom"))?)
+        .separator()
+        .item(&PredefinedMenuItem::close_window(app, Some("Close Window"))?)
         .build()?;
 
     MenuBuilder::new(app)
-        .items(&[&file, &edit, &view, &help])
+        .items(&[&application, &file, &edit, &view, &window, &help])
         .build()
 }
 
