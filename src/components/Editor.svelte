@@ -34,6 +34,8 @@
     oncomplete?: (at: number) => Promise<Completion[]>;
     /** Show zero-width characters (UNICODE appendix, P3.12). */
     showInvisibles?: boolean;
+    /** The editor was scrolled. The preview follows (P3.6). */
+    onscroll?: () => void;
   }
 
   let {
@@ -46,6 +48,7 @@
     oncursor,
     oncomplete,
     showInvisibles = false,
+    onscroll,
   }: Props = $props();
 
   /**
@@ -178,9 +181,17 @@
     dom.addEventListener("compositionstart", started);
     dom.addEventListener("compositionend", ended);
 
+    // Listened for on the scroller rather than through an update listener:
+    // CodeMirror reports a viewport change only when it re-renders, which is
+    // coarser than a scroll and would make the preview lag behind in steps.
+    const scroller = view.scrollDOM;
+    const scrolled = () => onscroll?.();
+    scroller.addEventListener("scroll", scrolled, { passive: true });
+
     return () => {
       dom.removeEventListener("compositionstart", started);
       dom.removeEventListener("compositionend", ended);
+      scroller.removeEventListener("scroll", scrolled);
       view?.destroy();
     };
   });
@@ -190,6 +201,48 @@
   $effect(() => {
     view?.dispatch({ effects: setShowInvisibles.of(showInvisibles) });
   });
+
+  /**
+   * The source offset at the top of the viewport.
+   *
+   * `elementAtHeight` asks CodeMirror rather than measuring DOM nodes, which
+   * matters because the editor wraps: a visual line is not a document line,
+   * and counting elements gets a wrapped paragraph wrong by however many rows
+   * it occupies.
+   */
+  export function topOffset(): number | null {
+    if (!view) return null;
+    const block = view.elementAtHeight(view.scrollDOM.scrollTop);
+    return block ? block.from : null;
+  }
+
+  /** The scrolling element, for the scroll sync to see who the user is driving. */
+  export function scroller(): HTMLElement | undefined {
+    return view?.scrollDOM;
+  }
+
+  /**
+   * Puts a source offset at the top of the viewport.
+   *
+   * By moving the scroller rather than through `EditorView.scrollIntoView`,
+   * which is the obvious call and does not do this. That effect's job is to
+   * make a position *visible*, and it declines to move when the position
+   * already is — so following the preview downwards worked for one step and
+   * then stopped, because the paragraph being asked for was still on screen at
+   * the bottom. Aligning to the top is a different request, and this is the
+   * same arithmetic the preview side uses for it.
+   *
+   * `documentTop` is where document coordinate zero sits on screen, so adding
+   * the block's own top turns a height in the document into a position in the
+   * viewport.
+   */
+  export function scrollToOffset(offset: number): void {
+    if (!view) return;
+    const at = Math.max(0, Math.min(offset, view.state.doc.length));
+    const block = view.lineBlockAt(at);
+    const delta = view.documentTop + block.top - view.scrollDOM.getBoundingClientRect().top;
+    view.scrollDOM.scrollTop += delta;
+  }
 
   /** Focus the editor. Used by F6 pane cycling. */
   export function focus(): void {

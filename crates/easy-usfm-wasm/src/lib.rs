@@ -19,7 +19,7 @@
 
 use easy_usfm_core::{
     ByteSpan, Char16, Char16Range, Eol, LineEndings, Resolution, Session as CoreSession, Severity,
-    TokenKind, Utf16Mapper, Version,
+    TextCursor, TokenKind, Utf16Mapper, Version,
 };
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
@@ -518,18 +518,46 @@ impl Session {
         }
 
         let source = self.inner.source();
+        // Starting at the chapter rather than at the file, so a run is looked
+        // for where this chunk begins. The cursor is shared across the whole
+        // chapter because the runs are in document order across it, not within
+        // each paragraph separately.
+        let mut cursor = TextCursor::new(
+            self.inner
+                .chunks()
+                .get(chunk)
+                .map_or(0, |chunk| chunk.range().start),
+        );
+
         let nodes: Vec<WireNode> = self
             .inner
             .chunk_content(chunk)
             .iter()
-            .map(|node| self.to_wire(source, node))
+            .map(|node| self.to_wire(source, node, &mut cursor))
             .collect();
 
         to_js(&nodes)
     }
 
-    fn to_wire(&self, source: &str, node: &easy_usfm_core::Node) -> WireNode {
-        let range = node.span.as_ref().map(|span| self.to_char16(source, span));
+    fn to_wire(
+        &self,
+        source: &str,
+        node: &easy_usfm_core::Node,
+        cursor: &mut TextCursor,
+    ) -> WireNode {
+        // A text leaf has no span of its own; it has to be found. Everything
+        // else moves the cursor to where it is, so the search for the next run
+        // starts after the marker rather than before it.
+        let own = match (&node.span, node.text.as_deref()) {
+            (Some(span), _) => {
+                cursor.enter(span);
+                Some(span.clone())
+            }
+            (None, Some(text)) => cursor.take(source, text),
+            (None, None) => None,
+        };
+
+        let range = own.as_ref().map(|span| self.to_char16(source, span));
 
         WireNode {
             kind: node.kind.as_str(),
@@ -550,7 +578,7 @@ impl Session {
             children: node
                 .children
                 .iter()
-                .map(|child| self.to_wire(source, child))
+                .map(|child| self.to_wire(source, child, cursor))
                 .collect(),
             text: node.text.clone(),
             // Sliced here, where the source is: the preview shows the bytes

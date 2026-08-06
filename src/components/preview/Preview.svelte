@@ -27,9 +27,16 @@
     onreference?: (reference: string) => void;
     /** Asks the engine to render a chapter. Called for what is about to show. */
     onneed?: (chunk: number) => void;
+    /** The preview was scrolled. The editor follows (P3.6). */
+    onscroll?: () => void;
   }
 
-  let { chunks, previews, onselect, onfollow, onreference, onneed }: Props = $props();
+  let { chunks, previews, onselect, onfollow, onreference, onneed, onscroll }: Props = $props();
+
+  /** The scrolling element, for the scroll sync to measure and move. */
+  export function container(): HTMLDivElement | undefined {
+    return host;
+  }
 
   /**
    * Which chapters are worth rendering now (ARCHITECTURE 10).
@@ -143,13 +150,29 @@
    * chunk has no number, and there is exactly one of it. Keying on index alone
    * would rebuild every chapter after an inserted `\c`; keying on number alone
    * cannot represent the header.
+   *
+   * The occurrence count is what makes it *unique*, which the number alone is
+   * not. Nothing stops a document from carrying `\c 1` twice — a duplicated
+   * chapter, a mis-numbered one, or the ordinary half-second between typing
+   * `\c ` and typing the digit that tells it apart. A duplicate key throws out
+   * of the each block, and everything from the collision onwards renders as
+   * nothing at all: the preview goes blank for what is only a typo.
    */
-  const keyOf = (chunk: Chunk, index: number) =>
-    chunk.number === null ? `header:${index}` : `chapter:${chunk.number}`;
+  const keys = $derived.by(() => {
+    const seen = new Map<number, number>();
+    return chunks.map((chunk, index) => {
+      if (chunk.number === null) return `header:${index}`;
+      const nth = (seen.get(chunk.number) ?? 0) + 1;
+      seen.set(chunk.number, nth);
+      // Only the repeats are suffixed, so the common case keeps the plain key
+      // and a chapter is not rebuilt because a later duplicate appeared.
+      return nth === 1 ? `chapter:${chunk.number}` : `chapter:${chunk.number}#${nth}`;
+    });
+  });
 </script>
 
-<div class="preview" bind:this={host}>
-  {#each chunks as chunk, index (keyOf(chunk, index))}
+<div class="preview" bind:this={host} onscroll={() => onscroll?.()}>
+  {#each chunks as chunk, index (keys[index])}
     <section
       class="chapter"
       data-chunk={index}

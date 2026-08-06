@@ -14,12 +14,14 @@
   import { engine } from "./lib/engine.svelte";
   import { fonts } from "./lib/fonts.svelte";
   import { hasInvisibles } from "./lib/invisibles";
+  import { ScrollSync, elementFor, scrollTo, topmostOffset, type Pane } from "./lib/scrollsync";
   import { isDesktop } from "./lib/shell";
   import { theme, type Theme } from "./lib/theme.svelte";
 
   let editor: Editor | undefined = $state();
   let goto: GoToReference | undefined = $state();
   let find: FindBar | undefined = $state();
+  let preview: Preview | undefined = $state();
   let error = $state<string | null>(null);
   let panelOpen = $state(true);
   /**
@@ -74,6 +76,65 @@ ${href}`)) return;
     }
     // `noopener` so the opened page cannot reach back through `window.opener`.
     window.open(href, "_blank", "noopener,noreferrer");
+  }
+
+  /**
+   * The two panes follow each other (P3.6).
+   *
+   * Scrolling one and not the other makes the split useless the moment a book
+   * is longer than a screen: the translator scrolls the source, looks right,
+   * and the preview is still on chapter one.
+   *
+   * Only the pane the user is actually scrolling drives the other; see
+   * scrollsync.ts for why that is the guard rather than a timer. The pane being
+   * moved never claims the wheel, so its own scroll events -- including the
+   * corrections a virtualized editor emits for several frames after a jump --
+   * are ignored, and the two cannot chase each other.
+   */
+  const sync = new ScrollSync();
+
+  // Which pane the user is working in, which is what decides whether a scroll
+  // event is an intent or an echo. After mount, because both panes have to
+  // exist before they can be watched.
+  $effect(() => {
+    const panes: [Pane, HTMLElement | undefined][] = [
+      ["editor", editor?.scroller()],
+      ["preview", preview?.container()],
+    ];
+
+    const stops: (() => void)[] = [];
+    for (const [pane, element] of panes) {
+      if (element) stops.push(sync.watch(pane, element));
+    }
+
+    return () => {
+      for (const stop of stops) stop();
+    };
+  });
+
+  function editorScrolled(): void {
+    if (!sync.accepts("editor")) return;
+
+    const offset = editor?.topOffset();
+    const container = preview?.container();
+    if (offset === null || offset === undefined || !container) return;
+
+    const target = elementFor(container, offset);
+    if (!target) return;
+
+    scrollTo(container, target);
+  }
+
+  function previewScrolled(): void {
+    if (!sync.accepts("preview")) return;
+
+    const container = preview?.container();
+    if (!container) return;
+
+    const offset = topmostOffset(container);
+    if (offset === null) return;
+
+    editor?.scrollToOffset(offset);
   }
 
   const counts = $derived(engine.counts);
@@ -409,11 +470,14 @@ ${href}`)) return;
           oncursor={(at) => engine.locate(at)}
           oncomplete={(at) => engine.completions(at)}
           {showInvisibles}
+          onscroll={editorScrolled}
         />
       {/snippet}
 
       {#snippet end()}
         <Preview
+          bind:this={preview}
+          onscroll={previewScrolled}
           chunks={engine.chunks}
           previews={engine.previews}
           onselect={(start, end) => editor?.reveal(start, end, false)}

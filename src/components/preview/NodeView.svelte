@@ -23,6 +23,7 @@
    * styling, not its Scripture.
    */
 
+  import { offsetWithin } from "../../lib/caret";
   import { sanitizeHref } from "../../lib/href";
   import type { PreviewNode } from "../../worker/protocol";
   import Note from "./Note.svelte";
@@ -75,6 +76,39 @@
   }
 
   /**
+   * A click inside a run of text, resolved to the character it landed on.
+   *
+   * P3.6 asks for the character, not the paragraph. The offset comes from the
+   * browser's own caret hit-testing rather than from measuring, because the
+   * cases that matter are the ones measuring gets wrong: a conjunct is one
+   * glyph made of several code points, and a reordered vowel sign is drawn
+   * before the consonant it follows in the string.
+   *
+   * The run's own start plus the offset into it, which composes because the
+   * engine reports Char16 and a caret offset is in the same units. A collapsed
+   * range rather than a selection: this is a caret being placed where someone
+   * pointed, and selecting the word around it would be answering a different
+   * question.
+   */
+  function selectCharacter(event: MouseEvent): void {
+    if (node.start === null || node.end === null) return;
+    event.stopPropagation();
+
+    const host = event.currentTarget as HTMLElement;
+    const within = offsetWithin(host, event.clientX, event.clientY);
+    // Falling back to the run rather than doing nothing: a browser with no
+    // caret hit-testing, or a click that landed between characters, should
+    // still put the cursor in the right sentence.
+    if (within === null) {
+      onselect?.(node.start, node.end);
+      return;
+    }
+
+    const at = Math.min(node.start + within, node.end);
+    onselect?.(at, at);
+  }
+
+  /**
    * A character marker's link target, if it carries one (SECURITY §2).
    *
    * `\jmp` is the marker for it, but `link-href` is generic on character
@@ -102,8 +136,23 @@
 </script>
 
 {#if node.kind === "text"}
-  <!-- A text position. Svelte escapes it; there is no other option here. -->
-  {node.text}
+  <!--
+    A text position. Svelte escapes it; there is no other option here.
+
+    Wrapped only when its span was recovered, because the span is the whole
+    reason for the element: without one there is nothing to add a caret offset
+    to, and an extra span per run of text is not free in a document the preview
+    renders a chapter at a time.
+  -->
+  {#if node.start === null}
+    {node.text}
+  {:else}
+    <span
+      class="usfm-text"
+      data-start={node.start}
+      onclick={selectCharacter}
+      role="presentation">{node.text}</span>
+  {/if}
 {:else if node.raw !== null}
   <!--
     Content the parser could not classify, shown verbatim rather than dropped
@@ -113,7 +162,7 @@
   -->
   <span class="usfm-raw" title="This markup could not be interpreted">{node.raw}</span>
 {:else if node.kind === "chapter"}
-  <h2 class="usfm-chapter" onclick={select} role="presentation">
+  <h2 class="usfm-chapter" data-start={node.start} onclick={select} role="presentation">
     {attribute("number") ?? ""}
   </h2>
 {:else if node.kind === "verse"}
@@ -136,7 +185,7 @@
     {/each}
   </Note>
 {:else if node.kind === "para"}
-  <p class="usfm-para {marked}" onclick={select} role="presentation">
+  <p class="usfm-para {marked}" data-start={node.start} onclick={select} role="presentation">
     {#each node.children as child, index (index)}
       <Self node={child} {...pass} />
     {/each}
@@ -197,7 +246,7 @@
     {/each}
   </span>
 {:else if node.kind === "table"}
-  <table class="usfm-table" onclick={select} role="presentation">
+  <table class="usfm-table" data-start={node.start} onclick={select} role="presentation">
     <tbody>
       {#each node.children as child, index (index)}
         <Self node={child} {...pass} />
@@ -235,7 +284,7 @@
   {/if}
 {:else if node.kind === "sidebar"}
   <!-- `\esb` is an aside in the reading sense as well as the markup one. -->
-  <aside class="usfm-sidebar" onclick={select} role="presentation">
+  <aside class="usfm-sidebar" data-start={node.start} onclick={select} role="presentation">
     {#each node.children as child, index (index)}
       <Self node={child} {...pass} />
     {/each}
@@ -247,7 +296,7 @@
     carries a caption and a reference the reader needs — so the placeholder
     shows those rather than a broken-image box.
   -->
-  <figure class="usfm-figure" onclick={select} role="presentation">
+  <figure class="usfm-figure" data-start={node.start} onclick={select} role="presentation">
     <div class="usfm-figure-frame">
       <span class="usfm-figure-note">Image not shown</span>
       {#if attribute("file")}
