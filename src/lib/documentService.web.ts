@@ -27,7 +27,15 @@
  * leaves a short file. That is a real difference and it is listed.
  */
 
-import type { DocumentService, Editable, Opened, SaveOutcome } from "./documentService";
+import type {
+  DocumentService,
+  Editable,
+  Opened,
+  Reopen,
+  SaveOutcome,
+  SnapshotState,
+} from "./documentService";
+import { clear, keyOf, newest, put, TabLock, type FileKey } from "./webRecovery";
 import type { Eol } from "./eol";
 
 /**
@@ -105,6 +113,12 @@ export function webDocuments(): DocumentService {
    */
   let handle: FileSystemFileHandle | null = null;
 
+  /** What identifies the open file, for recovery (FILE-FIDELITY §4). */
+  let identity: FileKey | null = null;
+  /** What the file held when it was opened, to compare a snapshot against. */
+  let lastOpenedText: string | null = null;
+  const tabLock = new TabLock();
+
   // SECURITY §3's last sentence, said out loud rather than left as a figure
   // that silently never appears.
   const noImages =
@@ -116,15 +130,10 @@ export function webDocuments(): DocumentService {
     "Changes made to this file by another program are not detected in a " +
     "browser. Reopen the file to see them.";
 
-  const noRecovery =
-    "Unsaved work is not recovered after a crash in a browser yet. Save often, " +
-    "or use the desktop application.";
-
   const limitations = hasFileSystemAccess()
     ? [
         noImages,
         noWatching,
-        noRecovery,
         "Saving is not atomic: the browser truncates the file before writing, " +
           "so an interrupted save can leave it short. The desktop application " +
           "writes through a temporary file and renames it.",
@@ -132,7 +141,6 @@ export function webDocuments(): DocumentService {
     : [
         noImages,
         noWatching,
-        noRecovery,
         "This browser cannot save back to the file you opened. Save downloads " +
           "a copy instead, and you will need to replace the original yourself.",
         "Saving is not atomic.",
@@ -163,6 +171,10 @@ export function webDocuments(): DocumentService {
       const file = hasFileSystemAccess() ? await pickWithHandle() : await pickWithInput();
       if (!file) return null;
 
+      // A browser is never told where a file came from, so a document is
+      // identified by name, size and last-modified (FILE-FIDELITY §4).
+      identity = { name: file.name, size: file.size, lastModified: file.lastModified };
+
       const engine = await fidelity();
       const bytes = new Uint8Array(await file.arrayBuffer());
 
@@ -171,6 +183,7 @@ export function webDocuments(): DocumentService {
       // user has typed anything (FILE-FIDELITY §1).
       const decoded = engine.decodeFile(bytes) as Decoded;
 
+      lastOpenedText = decoded.text;
       return {
         id: null,
         path: file.name,
@@ -225,25 +238,75 @@ export function webDocuments(): DocumentService {
       // interface's own recent list reads it.
     },
 
-    async snapshot(): Promise<void> {
-      // P4.6 is web recovery parity -- IndexedDB on the same cadence, with
-      // `navigator.locks` for the cross-tab equivalent. Until then a browser
-      // takes no snapshots, which is stated in `limitations` rather than left
-      // as a safety net that quietly is not there.
+    async snapshot(document: Editable, state: SnapshotState): Promise<void> {
+      // A document never opened from a file has no identity to file under. The
+      // desktop keys those on a session id; a browser tab that reloads has no
+      // session to continue, so there is nothing a snapshot could be matched
+      // against later.
+      if (!identity) return;
+
+      await put({
+        key: keyOf(identity),
+        takenAt: Date.now(),
+        text: document.text,
+        cursor: state.cursor,
+        dirty: state.dirty,
+        eol: state.eol,
+        bom: document.bom,
+        finalNewline: state.finalNewline,
+      });
     },
 
     async clearSnapshots(): Promise<void> {
-      // Nothing is stored, so nothing has to be forgotten.
+      if (identity) await clear(keyOf(identity));
     },
 
-    async examine(): Promise<null> {
-      // No processes to ask about, and nothing stored to recover. P4.6 brings
-      // the cross-tab half of this with `navigator.locks`.
-      return null;
+    async examine(): Promise<Reopen | null> {
+      if (!identity) return null;
+      const key = keyOf(identity);
+
+      // The cross-tab equivalent of the advisory lock. A lock held by another
+      // tab is released automatically if that tab crashes, which is the part a
+      // lock file cannot do without asking whether a process is alive.
+      const mine = await tabLock.take(key);
+      if (!mine) {
+        return {
+          held: {
+            state: "foreign",
+            owner: { pid: 0, started_at: 0, host: "another tab", app_version: "" },
+          },
+          recovery: null,
+        };
+      }
+
+      const found = await newest(key);
+      // Nothing outstanding when it was taken, so there is nothing to recover.
+      if (!found?.dirty) return { held: { state: "free" }, recovery: null };
+
+      // Compared against what was just read from the file, which is what the
+      // caller is about to show.
+      const disk = lastOpenedText;
+      const differing = countDifferingLines(found.text, disk ?? "");
+      if (differing === 0) return { held: { state: "free" }, recovery: null };
+
+      return {
+        held: { state: "crashed", owner: { pid: 0, started_at: 0, host: "", app_version: "" } },
+        recovery: {
+          taken_at: found.takenAt,
+          lines_differing: differing,
+          text: found.text,
+          cursor: found.cursor,
+        },
+      };
     },
 
-    async takeLock(): Promise<void> {},
-    async releaseLock(): Promise<void> {},
+    async takeLock(): Promise<void> {
+      if (identity) await tabLock.take(keyOf(identity));
+    },
+
+    async releaseLock(): Promise<void> {
+      tabLock.release();
+    },
 
     async watch(): Promise<void> {
       // A browser is not told when a file it was handed changes. The File
@@ -262,6 +325,24 @@ export function webDocuments(): DocumentService {
       return null;
     },
   };
+}
+
+/**
+ * How many lines differ, positionally.
+ *
+ * The same rule the shell uses, and for the same reason: a real edit script
+ * would be a better number and quadratic over a document that may be two
+ * megabytes, to put one figure in a yes-or-no prompt.
+ */
+function countDifferingLines(snapshot: string, disk: string): number {
+  const mine = snapshot.split("\n");
+  const theirs = disk.split("\n");
+  let differing = 0;
+
+  for (let line = 0; line < Math.max(mine.length, theirs.length); line += 1) {
+    if (mine[line] !== theirs[line]) differing += 1;
+  }
+  return differing;
 }
 
 async function serialize(document: Editable): Promise<Uint8Array> {

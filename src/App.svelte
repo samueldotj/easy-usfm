@@ -380,6 +380,8 @@ ${href}`)) return;
     void fonts.inspect(doc.text);
     showInvisibles = hasInvisibles(doc.text);
 
+    if (!isDesktop()) guardTheTab();
+
     if (isDesktop()) {
       await guardTheWindow();
       await listenToMenu();
@@ -598,6 +600,33 @@ ${href}`)) return;
       // The user chose to discard, so there is nothing outstanding worth
       // keeping -- and a snapshot written here would be offered back next time.
       if (!doc.dirty) await doc.clearSnapshots();
+    });
+  }
+
+  /**
+   * The browser's two teardown hooks (FILE-FIDELITY 4, P4.6).
+   *
+   * `beforeunload` warns on unsaved work, and is the only thing a browser
+   * offers for that -- the text of the prompt is the browser's own and cannot
+   * be set, which is why the snapshot matters more here than on the desktop.
+   *
+   * The snapshot itself flushes on `visibilitychange -> hidden`, "the only
+   * reliably-fired teardown event". `beforeunload` and `unload` are not fired
+   * when a tab is discarded under memory pressure or when a phone kills a
+   * background page, and those are exactly the cases a recovery snapshot is
+   * for.
+   */
+  function guardTheTab(): void {
+    window.addEventListener("beforeunload", (event) => {
+      if (!doc.dirty) return;
+      event.preventDefault();
+      // Assigning `returnValue` is the older spelling and still what some
+      // browsers require to show the prompt at all.
+      event.returnValue = "";
+    });
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") snapshots.flush();
     });
   }
 
