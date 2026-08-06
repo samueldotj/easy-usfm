@@ -13,6 +13,7 @@ pub mod document;
 pub mod figure;
 pub mod fs;
 pub mod menu;
+pub mod recovery;
 pub mod save;
 
 use document::Documents;
@@ -41,6 +42,21 @@ pub fn run() {
             // Empty to begin with; the interface pushes its recent list once
             // it has read its settings.
             menu::install(app.handle(), &[])?;
+
+            // FILE-FIDELITY 4: "directories older than 30 days pruned at
+            // startup". Off the main thread -- it is a directory walk over
+            // however much has accumulated, and nothing is waiting on it.
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                use tauri::Manager;
+                if let Ok(data) = handle.path().app_data_dir() {
+                    recovery::prune(
+                        &fs::RealFs,
+                        &data.join("recovery"),
+                        std::time::SystemTime::now(),
+                    );
+                }
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -51,6 +67,8 @@ pub fn run() {
             document::save_document,
             document::close_document,
             figure::read_figure,
+            recovery::snapshot_document,
+            recovery::clear_recovery,
         ])
         .run(tauri::generate_context!())
         .expect("the application failed to start");

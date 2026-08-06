@@ -21,6 +21,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 easy-usfm-core = { path = "../easy-usfm-core" }
+blake3.workspace = true
 tauri = { version = "2", features = [] }
 serde.workspace = true
 serde_json.workspace = true
@@ -39,3 +40,4 @@ windows-sys = { version = "0.61", features = [
 [dev-dependencies]
 tempfile = "3"
 easy-usfm-core = { path = "../easy-usfm-core" }
+blake3.workspace = true

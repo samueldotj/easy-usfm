@@ -111,15 +111,22 @@ export function webDocuments(): DocumentService {
     "Images in figures are not shown in a browser. A browser hands over one " +
     "file, not the folder around it, so there is nowhere to read them from.";
 
+  // Until P4.6. A safety net that is not there has to be said out loud.
+  const noRecovery =
+    "Unsaved work is not recovered after a crash in a browser yet. Save often, " +
+    "or use the desktop application.";
+
   const limitations = hasFileSystemAccess()
     ? [
         noImages,
+        noRecovery,
         "Saving is not atomic: the browser truncates the file before writing, " +
           "so an interrupted save can leave it short. The desktop application " +
           "writes through a temporary file and renames it.",
       ]
     : [
         noImages,
+        noRecovery,
         "This browser cannot save back to the file you opened. Save downloads " +
           "a copy instead, and you will need to replace the original yourself.",
         "Saving is not atomic.",
@@ -210,6 +217,17 @@ export function webDocuments(): DocumentService {
     async setRecentFiles(): Promise<void> {
       // No native menu to push into. The list still exists in settings and the
       // interface's own recent list reads it.
+    },
+
+    async snapshot(): Promise<void> {
+      // P4.6 is web recovery parity -- IndexedDB on the same cadence, with
+      // `navigator.locks` for the cross-tab equivalent. Until then a browser
+      // takes no snapshots, which is stated in `limitations` rather than left
+      // as a safety net that quietly is not there.
+    },
+
+    async clearSnapshots(): Promise<void> {
+      // Nothing is stored, so nothing has to be forgotten.
     },
 
     async readFigure(): Promise<Uint8Array | null> {

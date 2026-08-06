@@ -11,7 +11,14 @@
  * that lived here would be behaviour the two shells disagree on.
  */
 
-import type { DocumentService, Editable, Opened, SaveOutcome, Summary } from "./documentService";
+import type {
+  DocumentService,
+  Editable,
+  Opened,
+  SaveOutcome,
+  SnapshotState,
+  Summary,
+} from "./documentService";
 import type { Eol } from "./eol";
 
 interface NativeOpened {
@@ -131,6 +138,37 @@ export function tauriDocuments(): DocumentService {
       // say so in the placeholder rather than look like a missing file.
       const bytes = await invoke<number[] | Uint8Array>("read_figure", { id, path });
       return bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    },
+
+    async snapshot(document: Editable, state: SnapshotState): Promise<void> {
+      // A document with no shell handle has never been through `new` or
+      // `open`, so there is nothing to file a snapshot under.
+      if (document.id === null) return;
+
+      // The shell fills in the pid, version, and timestamp: a snapshot that
+      // claimed to come from a process which never wrote it would make crash
+      // detection (P4.2) read a crash where there was none.
+      await invoke("snapshot_document", {
+        id: document.id,
+        path: document.path,
+        text: document.text,
+        meta: {
+          path: document.path,
+          bom: document.bom,
+          eol: state.eol,
+          final_newline: state.finalNewline,
+          cursor: state.cursor,
+          dirty: state.dirty,
+          pid: 0,
+          app_version: "",
+          taken_at: 0,
+        },
+      });
+    },
+
+    async clearSnapshots(document: Editable): Promise<void> {
+      if (document.id === null) return;
+      await invoke("clear_recovery", { id: document.id, path: document.path });
     },
   };
 }

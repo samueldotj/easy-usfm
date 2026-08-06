@@ -18,6 +18,7 @@
   import { hasInvisibles } from "./lib/invisibles";
   import { print } from "./lib/print.svelte";
   import { ScrollSync, elementFor, scrollTo, topmostOffset, type Pane } from "./lib/scrollsync";
+  import { SnapshotSchedule } from "./lib/snapshots";
   import { isDesktop } from "./lib/shell";
   import { theme, type Theme } from "./lib/theme.svelte";
 
@@ -95,6 +96,18 @@ ${href}`)) return;
    * corrections a virtualized editor emits for several frames after a jump --
    * are ignored, and the two cannot chase each other.
    */
+  /**
+   * Recovery snapshots (FILE-FIDELITY 4, P4.1).
+   *
+   * The cadence lives here because this is the side that sees a keystroke.
+   * Where snapshots go, what they contain, and how many survive is the shell's,
+   * which is why this hands over a document and a caret and nothing else.
+   */
+  const snapshots = new SnapshotSchedule(() => void doc.snapshot(caret));
+
+  /** Where the caret is, recorded so a recovery can put it back. */
+  let caret = $state(0);
+
   const sync = new ScrollSync();
 
   // Which pane the user is working in, which is what decides whether a scroll
@@ -139,6 +152,19 @@ ${href}`)) return;
     if (offset === null) return;
 
     editor?.scrollToOffset(offset);
+  }
+
+  /**
+   * A save settles the schedule.
+   *
+   * Cancelling rather than flushing, because the file on disk now holds the
+   * work -- a snapshot taken here would record what was just saved, and
+   * FILE-FIDELITY 4 has snapshots *cleared* at this moment rather than written.
+   */
+  async function saved(action: () => Promise<boolean>): Promise<void> {
+    await run(async () => {
+      if (await action()) snapshots.settled();
+    });
   }
 
   const counts = $derived(engine.counts);
@@ -228,10 +254,10 @@ ${href}`)) return;
           await load(() => doc.open());
           break;
         case "save":
-          await run(() => doc.save());
+          await saved(() => doc.save());
           break;
         case "save-as":
-          await run(() => doc.saveAs());
+          await saved(() => doc.saveAs());
           break;
         case "focus-editor":
           cyclePanes(true);
@@ -275,7 +301,13 @@ ${href}`)) return;
   }
 
   // Separate from onMount, which cannot return a cleanup when it is async.
-  onDestroy(() => engine.stop());
+  onDestroy(() => {
+    engine.stop();
+    // The last chance to record work that is still only in memory. A no-op
+    // when nothing is outstanding, so a clean close leaves nothing behind for
+    // the next launch to offer back.
+    snapshots.flush();
+  });
 
   /**
    * The window title.
@@ -347,7 +379,15 @@ ${href}`)) return;
 
   async function load(action: () => Promise<unknown>): Promise<void> {
     if (!(await doc.confirmDiscard())) return;
+
+    // Whatever was pending belongs to the document being replaced. Flushed
+    // rather than dropped: the user has just chosen to discard their changes
+    // in the interface, and that is not the same as choosing to lose them --
+    // the snapshot is what makes the choice reversible.
+    snapshots.flush();
     await run(action);
+    // The new document starts with nothing outstanding.
+    snapshots.settled();
     editor?.load(doc.text);
     // A new document is not an edit to the old one; the engine gets the whole
     // text rather than a delta it could not make sense of.
@@ -445,7 +485,7 @@ ${href}`)) return;
         break;
       case "s":
         event.preventDefault();
-        void run(() => (event.shiftKey ? doc.saveAs() : doc.save()));
+        void saved(() => (event.shiftKey ? doc.saveAs() : doc.save()));
         break;
       case "p":
         // The panel first, not the printer. Every setting in it changes what
@@ -464,7 +504,7 @@ ${href}`)) return;
   <Toolbar
     onnew={() => void load(() => doc.createNew())}
     onopen={(path) => void load(() => doc.open(path))}
-    onsave={() => void run(() => doc.save())}
+    onsave={() => void saved(() => doc.save())}
   />
 
   <PrintSettings bind:this={printSettings} saved={doc.path !== null} />
@@ -486,6 +526,7 @@ ${href}`)) return;
             // Typing can introduce a script the document did not have, which
             // changes both the leading and whether there is a font for it.
             fonts.schedule(text);
+            snapshots.changed();
             engine.edit(
               changes.map((change) => ({
                 from: change.fromA,
@@ -498,7 +539,10 @@ ${href}`)) return;
           oncompositionstart={() => engine.startComposition()}
           oncompositionend={(text) => engine.endComposition(text)}
           ontokenrange={(from, to) => engine.requestTokens(from, to)}
-          oncursor={(at) => engine.locate(at)}
+          oncursor={(at) => {
+            caret = at;
+            engine.locate(at);
+          }}
           oncomplete={(at) => engine.completions(at)}
           {showInvisibles}
           onscroll={editorScrolled}

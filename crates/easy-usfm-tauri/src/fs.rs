@@ -46,6 +46,24 @@ pub trait FileSystem {
     fn write_in_place(&self, path: &Path, bytes: &[u8]) -> io::Result<()>;
 
     fn rename(&self, from: &Path, to: &Path) -> io::Result<()>;
+
+    /// Creates a directory and every missing parent. Succeeds if it exists.
+    ///
+    /// Here because recovery snapshots write into a directory the application
+    /// owns and may be creating for the first time (FILE-FIDELITY 4), and a
+    /// snapshot that fails because its folder is missing is a snapshot that
+    /// silently is not being taken.
+    fn create_dir_all(&self, path: &Path) -> io::Result<()>;
+
+    /// The entries directly inside a directory. Used for snapshot retention
+    /// and for pruning directories nobody is coming back for.
+    fn read_dir(&self, path: &Path) -> io::Result<Vec<PathBuf>>;
+
+    /// Removes a directory and everything in it.
+    fn remove_dir_all(&self, path: &Path) -> io::Result<()>;
+
+    /// When a path was last modified, for retention and pruning.
+    fn modified(&self, path: &Path) -> io::Result<std::time::SystemTime>;
     fn copy(&self, from: &Path, to: &Path) -> io::Result<()>;
     fn remove(&self, path: &Path) -> io::Result<()>;
 
@@ -68,6 +86,24 @@ pub struct RealFs;
 impl FileSystem for RealFs {
     fn read(&self, path: &Path) -> io::Result<Vec<u8>> {
         std::fs::read(path)
+    }
+
+    fn create_dir_all(&self, path: &Path) -> io::Result<()> {
+        std::fs::create_dir_all(path)
+    }
+
+    fn read_dir(&self, path: &Path) -> io::Result<Vec<PathBuf>> {
+        std::fs::read_dir(path)?
+            .map(|entry| entry.map(|entry| entry.path()))
+            .collect()
+    }
+
+    fn remove_dir_all(&self, path: &Path) -> io::Result<()> {
+        std::fs::remove_dir_all(path)
+    }
+
+    fn modified(&self, path: &Path) -> io::Result<std::time::SystemTime> {
+        std::fs::metadata(path)?.modified()
     }
 
     fn metadata(&self, path: &Path) -> io::Result<FileMeta> {

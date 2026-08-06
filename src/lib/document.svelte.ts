@@ -124,6 +124,42 @@ class DocumentState {
    * closing it is what ends the access. `null` where the host cannot load
    * local files, which is every browser.
    */
+  /**
+   * Writes a recovery snapshot of what is in the editor now.
+   *
+   * Silent on failure, deliberately. A snapshot is a safety net nobody asked
+   * for; reporting that one could not be written would interrupt the typing it
+   * exists to protect, with a message about a directory. FILE-FIDELITY 4's
+   * guarantee is that recovery is *offered* when a snapshot exists, not that
+   * one always does.
+   */
+  async snapshot(cursor: number): Promise<void> {
+    try {
+      const service = await documentService();
+      await service.snapshot(this.#editable(), {
+        cursor,
+        dirty: this.dirty,
+        // The per-line array is authoritative and already in the engine's own
+        // spelling; the summary's `eol` is a label for the status bar.
+        eol: this.#eols.dominant(),
+        finalNewline: this.summary?.final_newline ?? true,
+      });
+    } catch {
+      // See above.
+    }
+  }
+
+  /** Forgets them, on a clean save or a clean close (FILE-FIDELITY 4). */
+  async clearSnapshots(): Promise<void> {
+    try {
+      const service = await documentService();
+      await service.clearSnapshots(this.#editable());
+    } catch {
+      // Leftover snapshots are offered back on the next launch, which is a
+      // nuisance rather than a loss -- and not worth a dialog either.
+    }
+  }
+
   async readFigure(path: string): Promise<Uint8Array | null> {
     const service = await documentService();
     return service.readFigure(this.id, path);
@@ -204,6 +240,12 @@ class DocumentState {
     this.#refreshHostFacts(service);
 
     if (outcome.path) this.#remember(outcome.path);
+
+    // FILE-FIDELITY 4: "cleared on clean save". The file on disk now holds the
+    // work, so a snapshot of it is no longer a safety net -- it is an offer to
+    // restore something the user already has, which on the next launch reads
+    // as the application having lost their save.
+    void this.clearSnapshots();
     return true;
   }
 

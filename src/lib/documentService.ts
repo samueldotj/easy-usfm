@@ -77,11 +77,41 @@ export interface DocumentService {
    * back as an error message rather than as silence.
    */
   readFigure(id: number | null, path: string): Promise<Uint8Array | null>;
+  /**
+   * Writes a recovery snapshot (FILE-FIDELITY §4).
+   *
+   * Fire and forget from the caller's side, and silent on failure: a snapshot
+   * is a safety net nobody asked for, and a dialog saying it could not be
+   * written would interrupt the typing it exists to protect.
+   */
+  snapshot(document: Editable, state: SnapshotState): Promise<void>;
+  /** Forgets them, on a clean save or a clean close. */
+  clearSnapshots(document: Editable): Promise<void>;
   /** What this host cannot do, for the interface to say plainly. */
   readonly limitations: readonly string[];
 }
 
 /** What a service needs to know about the document to save it. */
+/**
+ * What a snapshot records beyond the text (FILE-FIDELITY §4).
+ *
+ * Passed alongside {@link Editable} rather than added to it: `Editable` is what
+ * *saving* needs, and a caret position is not part of that. Widening it would
+ * make every caller of `save` carry a cursor it has no use for.
+ */
+export interface SnapshotState {
+  /** UTF-16 code units, the unit the editor selects in. */
+  cursor: number;
+  dirty: boolean;
+  /**
+   * The dominant terminator, in the spelling the engine uses — not the one the
+   * status bar shows. `Eol` is what a recovery has to restore the envelope
+   * from, and `"LF"` is a label for people.
+   */
+  eol: Eol;
+  finalNewline: boolean;
+}
+
 export interface Editable {
   id: number | null;
   path: string | null;
