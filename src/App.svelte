@@ -7,6 +7,7 @@
   import FontNotice from "./components/FontNotice.svelte";
   import GoToReference from "./components/GoToReference.svelte";
   import Preview from "./components/preview/Preview.svelte";
+  import PrintSettings from "./components/PrintSettings.svelte";
   import SplitPane from "./components/SplitPane.svelte";
   import Toolbar from "./components/Toolbar.svelte";
   import VersionPicker from "./components/VersionPicker.svelte";
@@ -15,6 +16,7 @@
   import { fonts } from "./lib/fonts.svelte";
   import { figures } from "./lib/figures.svelte";
   import { hasInvisibles } from "./lib/invisibles";
+  import { print } from "./lib/print.svelte";
   import { ScrollSync, elementFor, scrollTo, topmostOffset, type Pane } from "./lib/scrollsync";
   import { isDesktop } from "./lib/shell";
   import { theme, type Theme } from "./lib/theme.svelte";
@@ -23,6 +25,7 @@
   let goto: GoToReference | undefined = $state();
   let find: FindBar | undefined = $state();
   let preview: Preview | undefined = $state();
+  let printSettings: PrintSettings | undefined = $state();
   let error = $state<string | null>(null);
   let panelOpen = $state(true);
   /**
@@ -155,6 +158,15 @@ ${href}`)) return;
   });
 
   /**
+   * Print settings are per document too, but keyed by path rather than by
+   * generation: they are a property of the book, so reopening a file should
+   * find the paper size it was last printed on.
+   */
+  $effect(() => {
+    print.load(doc.path);
+  });
+
+  /**
    * The editor is told about diagnostics as they arrive.
    *
    * Pushed here rather than passed as a prop because they are not the editor's
@@ -225,7 +237,7 @@ ${href}`)) return;
           cyclePanes(true);
           break;
         case "print":
-          window.print();
+          printSettings?.open();
           break;
         case "toggle-images":
           figures.toggle(!figures.shown);
@@ -436,11 +448,11 @@ ${href}`)) return;
         void run(() => (event.shiftKey ? doc.saveAs() : doc.save()));
         break;
       case "p":
-        // `window.print()` on both targets: Tauri 2 has no native print API,
-        // the webview path is correct everywhere, and it yields Save as PDF
-        // for free (PRODUCT 8).
+        // The panel first, not the printer. Every setting in it changes what
+        // comes out, and the browser's own dialog cannot ask about any of them
+        // (PRODUCT 8). Print is the button at the end of it.
         event.preventDefault();
-        window.print();
+        printSettings?.open();
         break;
     }
   }
@@ -454,6 +466,8 @@ ${href}`)) return;
     onopen={(path) => void load(() => doc.open(path))}
     onsave={() => void run(() => doc.save())}
   />
+
+  <PrintSettings bind:this={printSettings} saved={doc.path !== null} />
 
   {#if error}
     <p class="error" role="alert">{error}</p>

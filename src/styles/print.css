@@ -65,6 +65,36 @@
     background: #fff;
   }
 
+  /* The base size from the print settings, which the generated rule sets.
+     Falls back to the specification's 11 pt if nothing generated one. */
+  .preview {
+    font-size: var(--print-font-size, 11pt);
+  }
+
+  /* The optional parts (PRODUCT 8). Omitted rather than restyled: a reading
+     copy without apparatus is the common reason to print one. */
+  :root.print-no-headings .usfm-s,
+  :root.print-no-headings .usfm-s1,
+  :root.print-no-headings .usfm-s2,
+  :root.print-no-headings .usfm-s3,
+  :root.print-no-headings .usfm-r,
+  :root.print-no-intro .usfm-ip,
+  :root.print-no-intro .usfm-im,
+  :root.print-no-intro .usfm-is,
+  :root.print-no-intro .usfm-is1,
+  :root.print-no-intro .usfm-io,
+  :root.print-no-intro .usfm-io1,
+  :root.print-no-intro .usfm-io2,
+  :root.print-no-intro .usfm-iot,
+  /* Cross-references, inline and in the collected notes alike. Keyed off the
+     class the note component actually writes -- `.usfm-x` matched nothing,
+     because a note is marked by `reference` rather than by its marker, so the
+     toggle silently did nothing. */
+  :root.print-no-xrefs .usfm-note.reference,
+  :root.print-no-xrefs .usfm-notes-entry.reference {
+    display: none !important;
+  }
+
   .chapter {
     /*
      * Mandatory, and the reason this file ships with the optimization it
@@ -77,14 +107,18 @@
     content-visibility: visible !important;
     contain-intrinsic-size: none !important;
 
-    /* A chapter starting a page is the convention, and it is a setting: the
-       generated `@page` block can turn it off. */
-    break-before: page;
     max-inline-size: none;
   }
 
+  /* A chapter starting a page is the convention and the default, and it is a
+     setting (PRODUCT 8) -- so the rule keys off the class the settings put on
+     the root rather than being unconditional. */
+  :root.print-chapter-page .chapter {
+    break-before: page;
+  }
+
   /* The first chapter must not push a blank sheet out in front of it. */
-  .chapter:first-child {
+  :root.print-chapter-page .chapter:first-child {
     break-before: auto;
   }
 
@@ -123,20 +157,82 @@
   }
 
   /*
-   * Notes are printed where they are, expanded.
+   * Notes are collected, not floated.
    *
    * Per-page footnotes need `float: footnote`, which no browser has. PRODUCT 8
-   * offers end-of-chapter or end-of-document instead and states the limitation
-   * rather than approximating it; until that setting exists (P3.11), a note
-   * prints inline where its caller is, which loses nothing.
+   * offers end of chapter or end of document instead and states the limitation
+   * in the panel rather than approximating it badly.
+   *
+   * The preview renders both collections always and prints one, which is why
+   * the choice can be a class rather than a re-render. They are `aria-hidden`
+   * on screen: a note read out twice is worse than a note not printed.
    */
   .usfm-note-body {
-    display: inline !important;
-    background: none !important;
+    display: none !important;
   }
 
   .usfm-caller {
     color: #000 !important;
+  }
+
+  /*
+   * Numbered by the browser, in document order.
+   *
+   * The file's own caller is usually `+`, which means "number this for me" --
+   * a list of twenty identical plus signs at the end of a chapter is not a
+   * reference to anything. Two counters incremented in the same order give the
+   * caller and its entry the same number without either knowing about the
+   * other.
+   */
+  .preview {
+    counter-reset: note-caller note-entry;
+  }
+
+  :root.print-notes-chapter .chapter {
+    counter-reset: note-caller note-entry;
+  }
+
+  .usfm-caller {
+    counter-increment: note-caller;
+  }
+
+  /* The caller's own glyph is replaced by the number, not joined to it: the
+     file usually writes `+`, and `+1` is not a footnote marker. */
+  .usfm-caller {
+    font-size: 0 !important;
+  }
+
+  /* `rem`, not `em`. The rule above sets this element to zero, and `0.7em` of
+     zero is zero -- the numbers would be generated and print invisibly, which
+     is the worst of both. `rem` is relative to the root and unaffected. */
+  .usfm-caller::after {
+    content: counter(note-caller);
+    vertical-align: super;
+    font-size: 0.7rem;
+  }
+
+  .usfm-notes {
+    display: none;
+    margin-block-start: 1.2em;
+    padding-block-start: 0.5em;
+    border-block-start: 1px solid #000;
+    font-size: 0.85em;
+    break-inside: avoid;
+  }
+
+  :root.print-notes-chapter .usfm-notes-chapter,
+  :root.print-notes-document .usfm-notes-document {
+    display: block;
+  }
+
+  .usfm-notes-entry {
+    counter-increment: note-entry;
+    margin-block-end: 0.25em;
+  }
+
+  .usfm-notes-entry::before {
+    content: counter(note-entry) ". ";
+    font-weight: 600;
   }
 
   /* An image that was never loaded has nothing to print, and a dashed box

@@ -155,6 +155,45 @@
   }
 
   /**
+   * Every note in a chapter, in document order.
+   *
+   * Collected for print (PRODUCT 8): per-page footnotes need `float: footnote`,
+   * which no browser has, so notes go to the end of the chapter or the end of
+   * the document instead. Both collections are rendered and the stylesheet
+   * prints one, because which of them to show is a setting and re-rendering a
+   * book to change a radio button would be absurd.
+   *
+   * Nested notes are not descended into: a note inside a note is part of that
+   * note's text, not a second entry in the list.
+   */
+  function notesIn(nodes: readonly PreviewNode[]): PreviewNode[] {
+    const found: PreviewNode[] = [];
+
+    const walk = (list: readonly PreviewNode[]) => {
+      for (const node of list) {
+        if (node.kind === "note") found.push(node);
+        else walk(node.children);
+      }
+    };
+
+    walk(nodes);
+    return found;
+  }
+
+  /**
+   * Whether a note is a cross-reference rather than a footnote.
+   *
+   * The one distinction print cares about: PRODUCT 8 leaves cross-references
+   * out by default, because they are apparatus rather than Scripture.
+   */
+  const isReference = (note: PreviewNode) => note.marker === "x" || note.marker === "ex";
+
+  /** Every note in the document, for the end-of-document collection. */
+  const allNotes = $derived.by(() =>
+    previews.flatMap((nodes) => (nodes ? notesIn(nodes) : [])),
+  );
+
+  /**
    * A stable identity per chapter.
    *
    * The chunk's number where it has one, and its index otherwise — the header
@@ -195,6 +234,23 @@
         {#each previews[index] as node, at (at)}
           <NodeView {node} {onselect} {unpaired} {onfollow} {onreference} {onfigure} />
         {/each}
+        <!--
+          Notes gathered for print. `aria-hidden` and hidden on screen: this is
+          a second copy of text already on the page, and a screen reader
+          reading every footnote twice is worse than one not printed.
+        -->
+        {@const notes = notesIn(previews[index])}
+        {#if notes.length > 0}
+          <aside class="usfm-notes usfm-notes-chapter" aria-hidden="true">
+            {#each notes as note, at (at)}
+              <p class="usfm-notes-entry" class:reference={isReference(note)}>
+                {#each note.children as child, childAt (childAt)}
+                  <NodeView node={child} {onselect} {unpaired} {onfollow} {onreference} {onfigure} />
+                {/each}
+              </p>
+            {/each}
+          </aside>
+        {/if}
       {:else}
         <!-- In flight. Deliberately not a spinner: a chapter arrives in a few
              milliseconds, and a spinner that appears and vanishes that fast
@@ -203,6 +259,18 @@
       {/if}
     </section>
   {/each}
+
+  {#if allNotes.length > 0}
+    <aside class="usfm-notes usfm-notes-document" aria-hidden="true">
+      {#each allNotes as note, at (at)}
+        <p class="usfm-notes-entry" class:reference={isReference(note)}>
+          {#each note.children as child, childAt (childAt)}
+            <NodeView node={child} {onselect} {onfollow} {onreference} {onfigure} />
+          {/each}
+        </p>
+      {/each}
+    </aside>
+  {/if}
 
   {#if chunks.length === 0}
     <p class="empty">Nothing to preview yet.</p>
@@ -447,6 +515,11 @@
    * normally seen and it has to be useful: the caption and the reference are
    * the parts a reader actually needs, and a broken-image box carries neither.
    */
+
+  /* Print only. On screen these are a duplicate of text already shown. */
+  :global(.usfm-notes) {
+    display: none;
+  }
 
   :global(.usfm-figure) {
     margin-block: 0.9rem;
