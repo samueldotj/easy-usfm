@@ -112,6 +112,10 @@ export function webDocuments(): DocumentService {
     "file, not the folder around it, so there is nowhere to read them from.";
 
   // Until P4.6. A safety net that is not there has to be said out loud.
+  const noWatching =
+    "Changes made to this file by another program are not detected in a " +
+    "browser. Reopen the file to see them.";
+
   const noRecovery =
     "Unsaved work is not recovered after a crash in a browser yet. Save often, " +
     "or use the desktop application.";
@@ -119,6 +123,7 @@ export function webDocuments(): DocumentService {
   const limitations = hasFileSystemAccess()
     ? [
         noImages,
+        noWatching,
         noRecovery,
         "Saving is not atomic: the browser truncates the file before writing, " +
           "so an interrupted save can leave it short. The desktop application " +
@@ -126,6 +131,7 @@ export function webDocuments(): DocumentService {
       ]
     : [
         noImages,
+        noWatching,
         noRecovery,
         "This browser cannot save back to the file you opened. Save downloads " +
           "a copy instead, and you will need to replace the original yourself.",
@@ -238,6 +244,15 @@ export function webDocuments(): DocumentService {
 
     async takeLock(): Promise<void> {},
     async releaseLock(): Promise<void> {},
+
+    async watch(): Promise<void> {
+      // A browser is not told when a file it was handed changes. The File
+      // System Access API has no change notification at all, so this is a
+      // capability that is absent rather than one not yet written -- it is
+      // listed in `limitations` for that reason.
+    },
+
+    async unwatch(): Promise<void> {},
 
     async readFigure(): Promise<Uint8Array | null> {
       // SECURITY §3: "the web build never loads local images". A browser has

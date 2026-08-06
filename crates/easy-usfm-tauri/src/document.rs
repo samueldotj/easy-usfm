@@ -166,6 +166,7 @@ pub fn save_document(
     request: SaveRequest,
     path: Option<String>,
     documents: tauri::State<'_, Documents>,
+    watch: tauri::State<'_, crate::watch::FileWatch>,
 ) -> Result<SaveReport, String> {
     let mut open = documents.0.lock().map_err(|_| "document store poisoned")?;
     let document = open
@@ -211,6 +212,12 @@ pub fn save_document(
         document.fidelity = reloaded.fidelity;
     }
     document.path = Some(saved.path.clone());
+
+    // FILE-FIDELITY 3: the watcher recognises our own writes by content. The
+    // hash of exactly the bytes that reached the disk, so however late the
+    // event arrives -- ten seconds on a network mount -- it is not reported as
+    // somebody else's edit.
+    watch.wrote(&saved.path, *blake3::hash(&bytes).as_bytes());
 
     Ok(SaveReport {
         path: saved.path.to_string_lossy().to_string(),

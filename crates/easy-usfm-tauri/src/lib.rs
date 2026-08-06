@@ -17,6 +17,7 @@ pub mod menu;
 pub mod recovery;
 pub mod reopen;
 pub mod save;
+pub mod watch;
 
 use document::Documents;
 
@@ -43,6 +44,7 @@ pub fn run() {
         // Fixed for the process's lifetime, so a pid recorded in a lock can be
         // told apart from the same number reused by something else (P4.2).
         .manage(recovery::Started(lock::now_ms()))
+        .manage(watch::FileWatch::default())
         .setup(|app| {
             // Empty to begin with; the interface pushes its recent list once
             // it has read its settings.
@@ -77,6 +79,8 @@ pub fn run() {
             recovery::examine_document,
             recovery::take_lock,
             recovery::release_lock,
+            watch::watch_document,
+            watch::unwatch_document,
         ])
         .run(tauri::generate_context!())
         .expect("the application failed to start");

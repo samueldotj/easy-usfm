@@ -12,6 +12,7 @@
 import {
   documentService,
   type DocumentService,
+  type FileChanged,
   type Opened,
   type Owner,
   type Reopen,
@@ -195,6 +196,33 @@ class DocumentState {
     this.path = null;
     this.dirty = true;
     this.id = null;
+  }
+
+  /** Watches the open file for changes made elsewhere (FILE-FIDELITY 3). */
+  async watch(onchange: (change: FileChanged) => void): Promise<void> {
+    if (!this.path) return;
+    const service = await documentService();
+    await service.watch(this.path, onchange);
+  }
+
+  async unwatch(): Promise<void> {
+    const service = await documentService();
+    await service.unwatch();
+  }
+
+  /**
+   * Replaces the buffer with what is now on disk.
+   *
+   * Clean afterwards, unlike `restore`: the text and the file agree, which is
+   * the whole point of reloading. The envelope is not re-read here -- the
+   * shell recaptured it when the change was reported, and the terminators come
+   * back uniform for the same reason a recovered buffer does.
+   */
+  reload(text: string): void {
+    this.text = text;
+    this.dirty = false;
+    this.saveNote = null;
+    this.#eols = LineTerminators.uniform(countNewlines(text), this.#eols.dominant());
   }
 
   /** Takes the lock and stops refusing edits. */

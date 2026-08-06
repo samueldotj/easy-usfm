@@ -16,6 +16,7 @@ import type {
   Editable,
   Opened,
   SaveOutcome,
+  FileChanged,
   Reopen,
   SnapshotState,
   Summary,
@@ -42,6 +43,16 @@ async function invoke<T>(command: string, args?: Record<string, unknown>): Promi
 }
 
 export function tauriDocuments(): DocumentService {
+  /**
+   * The event listener, attached once and kept.
+   *
+   * Tauri's `listen` returns an unlisten function and attaching a second one
+   * would deliver every change twice. The shell watches one file at a time, so
+   * re-pointing it is a command rather than a new subscription.
+   */
+  let unlisten: (() => void) | null = null;
+  let handler: ((change: FileChanged) => void) | null = null;
+
   return {
     limitations: [],
 
@@ -182,6 +193,23 @@ export function tauriDocuments(): DocumentService {
 
     async releaseLock(path: string): Promise<void> {
       await invoke("release_lock", { path });
+    },
+
+    async watch(path: string, onchange: (change: FileChanged) => void): Promise<void> {
+      const { listen } = await import("@tauri-apps/api/event");
+      // One listener for the lifetime of the window rather than one per file:
+      // the shell watches a single path at a time and re-pointing it is a
+      // command, so a second listener here would double every report.
+      unlisten ??= await listen<FileChanged>("file-changed", (event) => {
+        handler?.(event.payload);
+      });
+      handler = onchange;
+      await invoke("watch_document", { path });
+    },
+
+    async unwatch(): Promise<void> {
+      handler = null;
+      await invoke("unwatch_document");
     },
   };
 }

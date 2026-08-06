@@ -27,6 +27,10 @@ serde.workspace = true
 serde_json.workspace = true
 tauri-plugin-dialog = "2.7.2"
 tauri-plugin-opener = "2.5.4"
+# Filesystem events (FILE-FIDELITY 3). `notify` falls back to polling itself
+# where a platform backend is unavailable, which is common on network mounts
+# and in containers -- exactly where translation files often live.
+notify = "8"
 
 # ReplaceFileW, not MoveFileEx. FILE-FIDELITY §2: ReplaceFileW preserves the
 # destination's ACLs, attributes, creation time, object ID, and alternate data

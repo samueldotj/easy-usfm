@@ -3,6 +3,7 @@
 
   import DiagnosticsPanel from "./components/DiagnosticsPanel.svelte";
   import Editor from "./components/Editor.svelte";
+  import ExternalChange from "./components/ExternalChange.svelte";
   import FindBar from "./components/FindBar.svelte";
   import FontNotice from "./components/FontNotice.svelte";
   import GoToReference from "./components/GoToReference.svelte";
@@ -13,6 +14,7 @@
   import Toolbar from "./components/Toolbar.svelte";
   import VersionPicker from "./components/VersionPicker.svelte";
   import { doc } from "./lib/document.svelte";
+  import type { FileChanged } from "./lib/documentService";
   import { engine } from "./lib/engine.svelte";
   import { fonts } from "./lib/fonts.svelte";
   import { figures } from "./lib/figures.svelte";
@@ -29,6 +31,16 @@
   let preview: Preview | undefined = $state();
   let printSettings: PrintSettings | undefined = $state();
   let recoveryPrompt: RecoveryPrompt | undefined = $state();
+
+  /**
+   * A change to the file made outside this window (FILE-FIDELITY 3, P4.4).
+   *
+   * Only ever set for the dirty and deleted cases. A clean document reloads
+   * silently -- there is nothing to lose and nothing to ask.
+   */
+  let outside = $state<{ kind: "external" | "gone"; text: string | null } | null>(null);
+  /** What the status bar says after a silent reload, briefly. */
+  let reloaded = $state<string | null>(null);
   let error = $state<string | null>(null);
   let panelOpen = $state(true);
   /**
@@ -97,7 +109,10 @@ ${href}`)) return;
    * moved never claims the wheel, so its own scroll events -- including the
    * corrections a virtualized editor emits for several frames after a jump --
    * are ignored, and the two cannot chase each other.
+   *
+   * (The pane sync itself is `sync`, below.)
    */
+
   /**
    * Recovery snapshots (FILE-FIDELITY 4, P4.1).
    *
@@ -200,6 +215,61 @@ ${href}`)) return;
 
     await doc.takeOver(path);
     if (waiting.recovery) recoveryPrompt?.ask(waiting.recovery);
+    await doc.watch(fileChanged);
+  }
+
+  /**
+   * The file changed underneath us (FILE-FIDELITY 3).
+   *
+   * Clean means reload silently, preserving position **by verse reference**
+   * rather than by offset -- an external rewrite makes offsets meaningless, and
+   * landing the caret at byte 4,000 of a file somebody reformatted puts it
+   * somewhere arbitrary. Dirty means the non-modal bar, never an automatic
+   * overwrite. Deleted keeps the buffer and says Save will recreate it.
+   */
+  async function fileChanged(change: FileChanged): Promise<void> {
+    if (change.kind === "gone") {
+      // Marked dirty: the buffer is now the only copy, and closing without
+      // saving would lose it.
+      doc.dirty = true;
+      outside = { kind: "gone", text: null };
+      return;
+    }
+    if (doc.dirty) {
+      outside = { kind: "external", text: change.text };
+      return;
+    }
+    if (change.text !== null) await reloadFrom(change.text);
+  }
+
+  /**
+   * Replaces the buffer, putting the caret back at the same verse.
+   *
+   * The reference is asked for *before* the text changes and resolved
+   * afterwards, because it is the one coordinate that survives a rewrite. A
+   * reference that no longer exists in the new text simply leaves the caret at
+   * the top, which is honest -- the verse it named is gone.
+   */
+  async function reloadFrom(text: string): Promise<void> {
+    const wasAt = engine.reference;
+
+    doc.reload(text);
+    editor?.load(doc.text);
+    engine.open(doc.text);
+    void fonts.inspect(doc.text);
+    showInvisibles = hasInvisibles(doc.text);
+    snapshots.settled();
+    outside = null;
+
+    if (wasAt) {
+      const found = await engine.resolve(wasAt);
+      if (typeof found.start === "number" && typeof found.end === "number") {
+        editor?.reveal(found.start, found.end, false);
+      }
+    }
+
+    reloaded = "Reloaded from disk";
+    setTimeout(() => (reloaded = null), 4000);
   }
 
   /**
@@ -232,6 +302,35 @@ ${href}`)) return;
     ].join("\n\n");
     if (!confirm(warning)) return;
     await doc.takeOver(path);
+  }
+
+  /**
+   * Shows what is on disk beside what is in the editor.
+   *
+   * FILE-FIDELITY 3 offers **Compare** and this application is not a diff tool,
+   * so the honest version is to say how they differ and let the user decide,
+   * rather than to grow a three-way merge nobody asked for. PTXprint and Git
+   * are where a real comparison belongs.
+   */
+  async function compareWithDisk(): Promise<void> {
+    const disk = outside?.text;
+    if (disk === null || disk === undefined) return;
+
+    const mine = doc.text.split("\n");
+    const theirs = disk.split("\n");
+    let differing = 0;
+    for (let line = 0; line < Math.max(mine.length, theirs.length); line += 1) {
+      if (mine[line] !== theirs[line]) differing += 1;
+    }
+
+    alert(
+      [
+        `The copy on disk differs from yours on ${differing} ${differing === 1 ? "line" : "lines"}.`,
+        `Yours: ${mine.length} lines. On disk: ${theirs.length} lines.`,
+        "Nothing has been changed. Keep my version leaves the file alone; " +
+          "Reload discards your changes.",
+      ].join("\n\n"),
+    );
   }
 
   const counts = $derived(engine.counts);
@@ -458,6 +557,10 @@ ${href}`)) return;
     // The new document starts with nothing outstanding.
     snapshots.settled();
     if (leaving && leaving !== doc.path) void doc.releaseLock(leaving);
+    // Stop watching whatever we were on. `claim` starts the new watch, and
+    // leaving this would report changes to a file nobody is looking at.
+    outside = null;
+    await doc.unwatch();
     await claim();
     editor?.load(doc.text);
     // A new document is not an edit to the old one; the engine gets the whole
@@ -491,6 +594,7 @@ ${href}`)) return;
       // and a promise in flight when that happens never lands.
       const held = doc.path;
       if (held) await doc.releaseLock(held);
+      await doc.unwatch();
       // The user chose to discard, so there is nothing outstanding worth
       // keeping -- and a snapshot written here would be offered back next time.
       if (!doc.dirty) await doc.clearSnapshots();
@@ -610,6 +714,17 @@ ${href}`)) return;
     }}
     ondiscard={() => void doc.clearSnapshots()}
   />
+
+  {#if outside}
+    <ExternalChange
+      kind={outside.kind}
+      onreload={() => {
+        if (outside?.text !== null && outside?.text !== undefined) void reloadFrom(outside.text);
+      }}
+      onkeep={() => (outside = null)}
+      oncompare={() => void compareWithDisk()}
+    />
+  {/if}
 
   {#if doc.readOnly}
     <!--
@@ -734,6 +849,10 @@ ${href}`)) return;
     {/if}
     <span>{engine.version ? `Engine ${engine.version}` : "Engine loading…"}</span>
     {#if doc.saveNote}<span class="note">Saved via {doc.saveNote}</span>{/if}
+    <!-- FILE-FIDELITY 3: a clean reload is silent apart from "a transient
+         status-bar notice". Here rather than in a bar, because nothing is
+         being asked and nothing was lost. -->
+    {#if reloaded}<span class="note">{reloaded}</span>{/if}
     {#if doc.limitations.length > 0}
       <!-- What this host cannot do, said plainly. An editor that appears to
            save and does not is the worst failure available to it, so the

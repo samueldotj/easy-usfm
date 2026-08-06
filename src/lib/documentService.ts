@@ -99,11 +99,28 @@ export interface DocumentService {
   takeLock(path: string): Promise<void>;
   /** Gives it up, on a clean close. */
   releaseLock(path: string): Promise<void>;
+  /**
+   * Watches a file for changes made outside this window (FILE-FIDELITY §3).
+   *
+   * The handler is called only for changes that are genuinely someone else's —
+   * our own saves are recognised by content hash and never reported.
+   */
+  watch(path: string, onchange: (change: FileChanged) => void): Promise<void>;
+  unwatch(): Promise<void>;
   /** What this host cannot do, for the interface to say plainly. */
   readonly limitations: readonly string[];
 }
 
 /** What a service needs to know about the document to save it. */
+/** A change to the file made outside this window (FILE-FIDELITY §3). */
+export interface FileChanged {
+  /** `"external"` — someone edited it. `"gone"` — it was deleted or renamed. */
+  kind: "external" | "gone";
+  path: string;
+  /** What it now holds. Absent when it is gone. */
+  text: string | null;
+}
+
 /** Who has a file open, if anyone (FILE-FIDELITY §4). */
 export type Held =
   | { state: "free" }
