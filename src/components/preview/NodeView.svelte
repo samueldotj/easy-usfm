@@ -86,6 +86,19 @@
   });
 
   const isUnpaired = $derived(unpaired?.has(node) ?? false);
+
+  /**
+   * A table cell's alignment, as a class rather than a style attribute.
+   *
+   * `style-src` without `'unsafe-inline'` blocks inline style attributes as
+   * well as style elements (SECURITY 4), so a `style:` directive here is a
+   * console violation on every table. Restricted to the three logical values
+   * the parser emits, since a class name is being built from document content.
+   */
+  const align = $derived.by(() => {
+    const value = node.attributes.find((entry) => entry.key === "align")?.value;
+    return value === "center" || value === "end" ? value : "start";
+  });
 </script>
 
 {#if node.kind === "text"}
@@ -208,13 +221,13 @@
     straight to `text-align` (UNICODE §8).
   -->
   {#if node.marker?.startsWith("th")}
-    <th class="usfm-cell {marked}" style:text-align={attribute("align") ?? "start"}>
+    <th class="usfm-cell {marked} usfm-align-{align}">
       {#each node.children as child, index (index)}
         <Self node={child} {...pass} />
       {/each}
     </th>
   {:else}
-    <td class="usfm-cell {marked}" style:text-align={attribute("align") ?? "start"}>
+    <td class="usfm-cell {marked} usfm-align-{align}">
       {#each node.children as child, index (index)}
         <Self node={child} {...pass} />
       {/each}

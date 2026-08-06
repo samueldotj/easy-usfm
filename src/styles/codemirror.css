@@ -26,9 +26,13 @@
  * to tofu. Every rule here that the base theme also sets is written
  * `.cm-editor .cm-scroller` so it wins on specificity rather than on order.
  *
- * That remaining injection is why `style-src` still carries `'unsafe-inline'`.
- * Removing it means stopping the base theme injecting too, which is P1.12's
- * item. What is settled here is the expensive half: none of *our* appearance
+ * That injection is now admitted by a nonce rather than by `'unsafe-inline'`
+ * (P3.9): CodeMirror stamps the nonce on the element it creates, Tauri stamps
+ * the same nonce on the carrier in `index.html`, and the policy names it.
+ * `style-src` is `'self'` plus that nonce, so an injected style element with
+ * no nonce -- which is what an attack would be -- is refused.
+ *
+ * What is settled here is still the expensive half: none of *our* appearance
  * goes through the injecting API, so there is no theme surface to retrofit.
  */
 

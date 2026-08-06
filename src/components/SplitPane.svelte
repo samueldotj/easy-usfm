@@ -25,6 +25,20 @@
   // to wire up. Re-reading storage as the user drags would fight them.
   let percent = $state(clamp(untrack(() => read(`split.${id}`, 50, isNumber))));
   let container: HTMLDivElement;
+
+  /**
+   * The divider position, written through the CSSOM rather than as a `style`
+   * attribute.
+   *
+   * `style-src` without `'unsafe-inline'` blocks inline style *attributes* as
+   * well as style elements (SECURITY §4), so `style="flex-basis: …"` is a
+   * console violation on every render under the real policy. Assigning a
+   * custom property through the CSSOM is not inline style and is not blocked —
+   * and one property on the container beats two attributes on the panes.
+   */
+  $effect(() => {
+    container?.style.setProperty("--split", `${percent}%`);
+  });
   let dragging = $state(false);
 
   function positionFrom(clientX: number): void {
@@ -103,7 +117,6 @@
     class="pane"
     data-pane
     tabindex="-1"
-    style="flex-basis: {percent}%"
     aria-label={startLabel}
   >
     {@render start()}
@@ -142,7 +155,6 @@
     class="pane"
     data-pane
     tabindex="-1"
-    style="flex-basis: {100 - percent}%"
     aria-label={endLabel}
   >
     {@render end()}
@@ -159,6 +171,17 @@
   .pane {
     min-inline-size: 0;
     overflow: hidden;
+  }
+
+  /* The two shares of `--split`, which the effect above sets through the
+     CSSOM. Selected by position rather than by a class, because there are
+     exactly two panes and their order is the layout. */
+  .pane:first-of-type {
+    flex-basis: var(--split, 50%);
+  }
+
+  .pane:last-of-type {
+    flex-basis: calc(100% - var(--split, 50%));
   }
 
   .divider {

@@ -384,6 +384,10 @@
     vertical-align: baseline;
   }
 
+  :global(.usfm-align-start) { text-align: start; }
+  :global(.usfm-align-center) { text-align: center; }
+  :global(.usfm-align-end) { text-align: end; }
+
   :global(.usfm-table th.usfm-cell) {
     font-weight: 600;
     border-block-end: 1px solid var(--border);
