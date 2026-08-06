@@ -7,6 +7,7 @@
  */
 
 import { DeltaBuffer, type Batch } from "./delta";
+import type { MarkerRow } from "./markerHelp";
 import type {
   Completion,
   Diagnostic,
@@ -542,6 +543,21 @@ export class Engine {
     // A request already in flight names a chapter this may have just changed.
     // Its answer would overwrite the drop with what the chapter used to be.
     this.#requested.clear();
+  }
+
+  /**
+   * The whole marker table, for the reference page.
+   *
+   * Straight from the engine module rather than through the worker: it is a
+   * constant, identical for every document and every session, so routing it
+   * through the delta protocol would add a message kind to carry something
+   * that never changes.
+   */
+  async markerTable(): Promise<MarkerRow[]> {
+    const module = await import("../generated/wasm/easy_usfm_wasm");
+    const url = (await import("../generated/wasm/easy_usfm_wasm_bg.wasm?url")).default;
+    await module.default({ module_or_path: url });
+    return module.markerTable() as MarkerRow[];
   }
 
   /** Counts by severity, for the status bar. */

@@ -85,6 +85,39 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, recent: &[String]) -> tauri::Result
             .item(&MenuItemBuilder::with_id("recent:clear", "Clear Recent Files").build(app)?);
     }
 
+    // Insert. The same commands the toolbar offers, by the same ids -- the
+    // interface has one handler for both, so a menu item cannot come to mean
+    // something different from the button beside it.
+    //
+    // Bold and Italic take the accelerators every editor uses. The rest have
+    // none: there are seven of them, the letters worth having are taken, and a
+    // shortcut nobody can guess is a line in a menu rather than a shortcut.
+    let insert = SubmenuBuilder::new(app, "&Insert")
+        .item(
+            &MenuItemBuilder::with_id("insert-chapter", "&Chapter")
+                .build(app)?,
+        )
+        .item(&MenuItemBuilder::with_id("insert-verse", "&Verse").build(app)?)
+        .separator()
+        .item(
+            &MenuItemBuilder::with_id("insert-bold", "&Bold")
+                .accelerator("CmdOrCtrl+B")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("insert-italic", "&Italic")
+                .accelerator("CmdOrCtrl+I")
+                .build(app)?,
+        )
+        .separator()
+        .item(&MenuItemBuilder::with_id("insert-paragraph", "&Paragraph").build(app)?)
+        .item(&MenuItemBuilder::with_id("insert-break", "Blan&k Line").build(app)?)
+        .item(&MenuItemBuilder::with_id("insert-poetry", "Poetr&y Line").build(app)?)
+        .separator()
+        .item(&MenuItemBuilder::with_id("insert-table", "&Table").build(app)?)
+        .item(&MenuItemBuilder::with_id("insert-figure", "I&mage").build(app)?)
+        .build()?;
+
     let mut file = SubmenuBuilder::new(app, "&File")
         .item(
             &MenuItemBuilder::with_id("new", "&New")
@@ -243,7 +276,14 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, recent: &[String]) -> tauri::Result
         }),
     )?;
 
-    let help = SubmenuBuilder::new(app, "&Help");
+    let help = SubmenuBuilder::new(app, "&Help").item(
+        // F1 is Help on Windows and Linux by long convention. macOS has no
+        // equivalent and its Help menu is searched rather than pressed, so the
+        // item is there and the accelerator is not.
+        &MenuItemBuilder::with_id("marker-reference", "&USFM Marker Reference")
+            .accelerator(if MAC { "" } else { "F1" })
+            .build(app)?,
+    );
     // On macOS About belongs in the application menu and Help holds only
     // documentation. Putting it in both would be two About items.
     let help = if MAC { help } else { help.item(&about) };
@@ -251,7 +291,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, recent: &[String]) -> tauri::Result
 
     if !MAC {
         return MenuBuilder::new(app)
-            .items(&[&file, &edit, &view, &help])
+            .items(&[&file, &edit, &insert, &view, &help])
             .build();
     }
 
@@ -281,7 +321,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, recent: &[String]) -> tauri::Result
         .build()?;
 
     MenuBuilder::new(app)
-        .items(&[&application, &file, &edit, &view, &window, &help])
+        .items(&[&application, &file, &edit, &insert, &view, &window, &help])
         .build()
 }
 

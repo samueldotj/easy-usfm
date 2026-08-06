@@ -272,6 +272,39 @@
     view.scrollDOM.scrollTop += delta;
   }
 
+  /** What is selected, for a command that wraps or replaces it. */
+  export function selection(): { text: string; from: number; to: number } | null {
+    if (!view) return null;
+    const range = view.state.selection.main;
+    return { text: view.state.doc.toString(), from: range.from, to: range.to };
+  }
+
+  /**
+   * Applies an insertion and leaves the caret where it belongs.
+   *
+   * One transaction, so it is one undo step: pressing Bold and then Ctrl+Z
+   * should remove the markers, not half of them.
+   *
+   * Focus returns to the editor afterwards. A toolbar button takes focus when
+   * it is clicked, and typing straight after pressing Bold has to go into the
+   * document rather than into the button.
+   */
+  export function applyInsertion(
+    from: number,
+    to: number,
+    insertion: { text: string; caret: number; select?: number },
+  ): void {
+    if (!view) return;
+    const anchor = from + insertion.caret;
+
+    view.dispatch({
+      changes: { from, to, insert: insertion.text },
+      selection: { anchor, head: anchor + (insertion.select ?? 0) },
+      scrollIntoView: true,
+    });
+    view.focus();
+  }
+
   /** Focus the editor. Used by F6 pane cycling. */
   export function focus(): void {
     view?.focus();

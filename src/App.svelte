@@ -7,21 +7,26 @@
   import FindBar from "./components/FindBar.svelte";
   import FontNotice from "./components/FontNotice.svelte";
   import GoToReference from "./components/GoToReference.svelte";
+  import InsertToolbar from "./components/InsertToolbar.svelte";
+  import MarkerHelp from "./components/MarkerHelp.svelte";
   import Preview from "./components/preview/Preview.svelte";
   import PrintSettings from "./components/PrintSettings.svelte";
   import RecoveryPrompt from "./components/RecoveryPrompt.svelte";
   import SplitPane from "./components/SplitPane.svelte";
   import Toolbar from "./components/Toolbar.svelte";
   import UpdateBar from "./components/UpdateBar.svelte";
+  import UpdatePrompt from "./components/UpdatePrompt.svelte";
   import VersionPicker from "./components/VersionPicker.svelte";
   import { doc } from "./lib/document.svelte";
   import type { FileChanged } from "./lib/documentService";
   import { engine } from "./lib/engine.svelte";
   import { fonts } from "./lib/fonts.svelte";
   import { figures } from "./lib/figures.svelte";
+  import { insertionFor } from "./lib/insert";
   import { hasInvisibles } from "./lib/invisibles";
   import { print } from "./lib/print.svelte";
   import { pwa } from "./lib/pwa.svelte";
+  import { updates } from "./lib/updates.svelte";
   import { ScrollSync, elementFor, scrollTo, topmostOffset, type Pane } from "./lib/scrollsync";
   import { SnapshotSchedule } from "./lib/snapshots";
   import type { LaunchQueueHost } from "./lib/launch";
@@ -34,6 +39,7 @@
   let preview: Preview | undefined = $state();
   let printSettings: PrintSettings | undefined = $state();
   let recoveryPrompt: RecoveryPrompt | undefined = $state();
+  let markerHelp: MarkerHelp | undefined = $state();
 
   /**
    * A change to the file made outside this window (FILE-FIDELITY 3, P4.4).
@@ -396,6 +402,14 @@ ${href}`)) return;
       await listenToMenu();
       // The shell starts with an empty Open Recent; the list lives here.
       await doc.pushRecentToMenu();
+
+      // Whether this build can check for updates at all, and then the first-run
+      // question (PRODUCT 11). Asked after the document is open and only while
+      // nothing is unsaved -- a prompt over somebody's typing is dismissed by
+      // the next keystroke, which is consent nobody gave.
+      const { invoke } = await import("@tauri-apps/api/core");
+      await updates.inspect(invoke);
+      updates.askIfNeeded(doc.dirty);
     }
   });
 
@@ -420,6 +434,13 @@ ${href}`)) return;
       }
       if (id.startsWith("theme:")) {
         theme.set(id.slice("theme:".length) as Theme);
+        return;
+      }
+
+      // Every insert command, by the id the toolbar uses. Handled before the
+      // switch so adding one to `COMMANDS` adds it to the menu path too.
+      if (id.startsWith("insert-")) {
+        insert(id);
         return;
       }
 
@@ -470,6 +491,10 @@ ${href}`)) return;
         case "previous-diagnostic":
           editor?.step(false);
           break;
+        case "marker-reference":
+          void markerHelp?.open();
+          break;
+
         case "go-to-reference":
           goto?.open();
           break;
@@ -554,6 +579,67 @@ ${href}`)) return;
     // list -- and falls back to the region only when there is nothing.
     const target = next?.querySelector<HTMLElement>("[data-pane-focus]") ?? next;
     target?.focus();
+  }
+
+  /**
+   * Runs an insert command, from the toolbar or the menu.
+   *
+   * The numbers are suggested rather than imposed: `\c` and `\v` are given the
+   * next one where it can be worked out, with the caret after it so a different
+   * one is a keystroke away. Refusing while the document is read-only, because
+   * the editor would refuse the transaction anyway and a button that silently
+   * does nothing is worse than one that is visibly unavailable.
+   */
+  function insert(id: string): void {
+    if (doc.readOnly) return;
+
+    const at = editor?.selection();
+    if (!at) return;
+
+    const insertion = insertionFor(id, {
+      text: at.text,
+      from: at.from,
+      to: at.to,
+      nextChapter: nextChapter(),
+      nextVerse: nextVerse(),
+    });
+    if (!insertion) return;
+
+    editor?.applyInsertion(at.from, at.to, insertion);
+  }
+
+  /**
+   * One past the highest chapter the document has.
+   *
+   * From the parse rather than by scanning the text: the engine already knows
+   * where the chapters are, and a second reader of `\c` here would be a second
+   * thing to keep in step with the parser.
+   */
+  function nextChapter(): number | undefined {
+    const numbers = engine.chunks
+      .map((chunk) => chunk.number)
+      .filter((number): number is number => number !== null);
+
+    return numbers.length === 0 ? 1 : Math.max(...numbers) + 1;
+  }
+
+  /**
+   * One past the verse the caret is in.
+   *
+   * From the status bar's own reference, which the engine keeps current as the
+   * caret moves. `undefined` where there is no verse yet -- in a chapter that
+   * has none, the useful suggestion is 1, and outside a chapter there is
+   * nothing to suggest at all.
+   */
+  function nextVerse(): number | undefined {
+    const reference = engine.reference;
+    if (!reference) return undefined;
+
+    const verse = /:(\d+)\s*$/.exec(reference);
+    if (!verse) return 1;
+
+    const parsed = Number(verse[1]);
+    return Number.isFinite(parsed) ? parsed + 1 : undefined;
   }
 
   /**
@@ -780,6 +866,8 @@ ${href}`)) return;
     onsave={() => void saved(() => doc.save())}
   />
 
+  <MarkerHelp bind:this={markerHelp} />
+
   <PrintSettings bind:this={printSettings} saved={doc.path !== null} />
 
   <RecoveryPrompt
@@ -801,6 +889,9 @@ ${href}`)) return;
   />
 
   <UpdateBar />
+  <UpdatePrompt />
+
+  <InsertToolbar oninsert={insert} disabled={doc.readOnly} />
 
   {#if outside}
     <ExternalChange
