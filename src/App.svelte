@@ -150,6 +150,9 @@ ${href}`)) return;
         case "focus-editor":
           cyclePanes(true);
           break;
+        case "print":
+          window.print();
+          break;
         case "toggle-invisibles":
           showInvisibles = !showInvisibles;
           break;
@@ -353,6 +356,13 @@ ${href}`)) return;
       case "s":
         event.preventDefault();
         void run(() => (event.shiftKey ? doc.saveAs() : doc.save()));
+        break;
+      case "p":
+        // `window.print()` on both targets: Tauri 2 has no native print API,
+        // the webview path is correct everywhere, and it yields Save as PDF
+        // for free (PRODUCT 8).
+        event.preventDefault();
+        window.print();
         break;
     }
   }

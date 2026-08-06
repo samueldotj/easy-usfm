@@ -76,6 +76,12 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, recent: &[String]) -> tauri::Result
                 .build(app)?,
         )
         .separator()
+        .item(
+            &MenuItemBuilder::with_id("print", "&Print…")
+                .accelerator("CmdOrCtrl+P")
+                .build(app)?,
+        )
+        .separator()
         // Predefined, so it does what the platform's own Quit does -- which
         // includes going through the window's close handler, and therefore
         // through the unsaved-changes prompt.

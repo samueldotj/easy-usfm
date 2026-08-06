@@ -1,0 +1,166 @@
+/*
+ * Print (PRODUCT §8) — P3.10.
+ *
+ * "Ctrl+P produces a clean, readable document from the preview via print CSS.
+ * Not typesetting."
+ *
+ * What browsers give: `@page` size and margin, `break-*`, `orphans`, `widows`,
+ * `print-color-adjust`. What they do not: Paged Media margin boxes, so running
+ * headers come from the browser's own print dialog; `float: footnote`, so
+ * per-page footnotes are impossible; named pages; column balancing. Anything
+ * needing the second list is out of scope by definition rather than by
+ * omission, and approximating it badly would be worse than not offering it.
+ *
+ * The `@page` rule itself is generated at print time from the document's
+ * settings, so it is not here.
+ */
+
+@media print {
+  /*
+   * Everything that is not the Scripture.
+   *
+   * `!important` throughout because these compete with inline styles the split
+   * pane writes for its own sizing, and a pane that is 50% wide on paper is a
+   * page of Scripture with a blank half beside it.
+   */
+  header,
+  footer,
+  .bar,
+  .panel,
+  .notice,
+  .editor,
+  .cm-editor,
+  .divider,
+  dialog {
+    display: none !important;
+  }
+
+  /* The preview stops being one half of a split and becomes the page. */
+  .app,
+  main,
+  .split,
+  .pane {
+    display: block !important;
+    block-size: auto !important;
+    overflow: visible !important;
+    flex-basis: auto !important;
+    inline-size: 100% !important;
+    max-inline-size: none !important;
+  }
+
+  .preview {
+    block-size: auto !important;
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+
+  /* Ink on paper, whatever the screen was set to. A dark theme printed as it
+     appears is a page of black toner and an unhappy translator. */
+  :root {
+    color-scheme: light;
+  }
+
+  body {
+    color: #000;
+    background: #fff;
+  }
+
+  .chapter {
+    /*
+     * Mandatory, and the reason this file ships with the optimization it
+     * corrects. The preview sets `content-visibility: auto` so the browser can
+     * skip offscreen chapters (ARCHITECTURE §10) -- and the print renderer
+     * sees exactly that. Without this override, printing a fifty-chapter book
+     * yields one chapter and forty-nine blank pages, which is a bug nobody
+     * finds until the day they need to print.
+     */
+    content-visibility: visible !important;
+    contain-intrinsic-size: none !important;
+
+    /* A chapter starting a page is the convention, and it is a setting: the
+       generated `@page` block can turn it off. */
+    break-before: page;
+    max-inline-size: none;
+  }
+
+  /* The first chapter must not push a blank sheet out in front of it. */
+  .chapter:first-child {
+    break-before: auto;
+  }
+
+  /* A heading at the foot of a page with its text overleaf is the commonest
+     print defect there is. */
+  .usfm-mt1,
+  .usfm-mt2,
+  .usfm-mt3,
+  .usfm-s,
+  .usfm-s1,
+  .usfm-s2,
+  .usfm-r,
+  .usfm-chapter {
+    break-after: avoid;
+  }
+
+  /* A poetic line broken across pages stops being a line; a table row broken
+     across pages stops being a row. */
+  [class*="usfm-q"],
+  [class*="usfm-li"],
+  tr,
+  .usfm-figure {
+    break-inside: avoid;
+  }
+
+  .usfm-para {
+    orphans: 2;
+    widows: 2;
+  }
+
+  /* USFM's own page-break marker. Honouring it is not scope creep: the format
+     defines it, and print is the one place the preview legitimately knows
+     that pages exist. */
+  .usfm-pb {
+    break-before: page;
+  }
+
+  /*
+   * Notes are printed where they are, expanded.
+   *
+   * Per-page footnotes need `float: footnote`, which no browser has. PRODUCT 8
+   * offers end-of-chapter or end-of-document instead and states the limitation
+   * rather than approximating it; until that setting exists (P3.11), a note
+   * prints inline where its caller is, which loses nothing.
+   */
+  .usfm-note-body {
+    display: inline !important;
+    background: none !important;
+  }
+
+  .usfm-caller {
+    color: #000 !important;
+  }
+
+  /* An image that was never loaded has nothing to print, and a dashed box
+     where a figure would be is worse than the caption alone. */
+  .usfm-figure-frame {
+    display: none !important;
+  }
+
+  /* Links cannot be followed on paper. The URL is in the title attribute for
+     anyone who wants it on screen; printing it inline would break the line
+     and say nothing a reader can act on. */
+  .usfm-link,
+  .usfm-ref {
+    color: #000 !important;
+    text-decoration: none !important;
+  }
+
+  .usfm-inert {
+    text-decoration: none !important;
+  }
+
+  /* Marks for characters that are not there. Meaningless on paper. */
+  .cm-invisible,
+  .usfm-milestone {
+    display: none !important;
+  }
+}
