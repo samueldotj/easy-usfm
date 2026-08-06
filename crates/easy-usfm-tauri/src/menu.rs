@@ -276,7 +276,14 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, recent: &[String]) -> tauri::Result
         }),
     )?;
 
-    let help = SubmenuBuilder::new(app, "&Help");
+    let help = SubmenuBuilder::new(app, "&Help").item(
+        // F1 is Help on Windows and Linux by long convention. macOS has no
+        // equivalent and its Help menu is searched rather than pressed, so the
+        // item is there and the accelerator is not.
+        &MenuItemBuilder::with_id("marker-reference", "&USFM Marker Reference")
+            .accelerator(if MAC { "" } else { "F1" })
+            .build(app)?,
+    );
     // On macOS About belongs in the application menu and Help holds only
     // documentation. Putting it in both would be two About items.
     let help = if MAC { help } else { help.item(&about) };

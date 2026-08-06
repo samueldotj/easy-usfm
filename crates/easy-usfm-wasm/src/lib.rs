@@ -68,6 +68,42 @@ pub fn new_document() -> String {
     easy_usfm_core::NEW_DOCUMENT.to_string()
 }
 
+/// The class, as the reference page groups by.
+fn class_name(class: easy_usfm_core::markers::MarkerClass) -> &'static str {
+    use easy_usfm_core::markers::MarkerClass;
+    match class {
+        MarkerClass::Paragraph => "paragraph",
+        MarkerClass::Character => "character",
+        MarkerClass::Note => "note",
+        MarkerClass::Milestone => "milestone",
+        MarkerClass::Unclassified => "unclassified",
+    }
+}
+
+/// The whole marker table, for the reference page.
+///
+/// Not on the session: the table is the specification, identical for every
+/// document, so asking a particular document about it would imply otherwise.
+#[wasm_bindgen(js_name = markerTable)]
+pub fn marker_table() -> JsValue {
+    let rows: Vec<WireMarker> = easy_usfm_core::markers::all()
+        .map(|info| WireMarker {
+            marker: info.marker,
+            class: class_name(info.class),
+            closing: format!("{:?}", info.closing).to_lowercase(),
+            nests_under: info.nests_under.clone(),
+            attributes: info.attributes.clone(),
+            default_attr: info.default_attr,
+            since: info.since,
+            deprecated_in: info.deprecated_in,
+            replacement: info.replacement,
+            publishable: info.publishable,
+        })
+        .collect();
+
+    to_js(&rows)
+}
+
 /// Reads a file's envelope, and returns the text with it removed.
 ///
 /// Fails on bytes that are not UTF-8 rather than replacing them: FILE-FIDELITY
@@ -234,6 +270,29 @@ pub struct WireNode {
 pub struct WireAttribute {
     pub key: String,
     pub value: String,
+}
+
+/// One row of the marker table, for the reference page.
+///
+/// Everything here comes from `markers.toml`, which is generated from the
+/// specification's stylesheet. A reference page written by hand would be a
+/// second description of the same thing, and the two would disagree within a
+/// release -- the interesting question about a marker is exactly the one the
+/// parser already answers.
+#[derive(Debug, Serialize)]
+pub struct WireMarker {
+    pub marker: &'static str,
+    pub class: &'static str,
+    /// `"explicit"`, `"none"`, or whatever the table records.
+    pub closing: String,
+    /// `["*"]` for a character style that nests almost anywhere.
+    pub nests_under: Vec<&'static str>,
+    pub attributes: Vec<&'static str>,
+    pub default_attr: Option<&'static str>,
+    pub since: Option<&'static str>,
+    pub deprecated_in: Option<&'static str>,
+    pub replacement: Option<&'static str>,
+    pub publishable: bool,
 }
 
 /// One search hit, in the coordinates the editor selects in.

@@ -8,6 +8,7 @@
   import FontNotice from "./components/FontNotice.svelte";
   import GoToReference from "./components/GoToReference.svelte";
   import InsertToolbar from "./components/InsertToolbar.svelte";
+  import MarkerHelp from "./components/MarkerHelp.svelte";
   import Preview from "./components/preview/Preview.svelte";
   import PrintSettings from "./components/PrintSettings.svelte";
   import RecoveryPrompt from "./components/RecoveryPrompt.svelte";
@@ -36,6 +37,7 @@
   let preview: Preview | undefined = $state();
   let printSettings: PrintSettings | undefined = $state();
   let recoveryPrompt: RecoveryPrompt | undefined = $state();
+  let markerHelp: MarkerHelp | undefined = $state();
 
   /**
    * A change to the file made outside this window (FILE-FIDELITY 3, P4.4).
@@ -479,6 +481,10 @@ ${href}`)) return;
         case "previous-diagnostic":
           editor?.step(false);
           break;
+        case "marker-reference":
+          void markerHelp?.open();
+          break;
+
         case "go-to-reference":
           goto?.open();
           break;
@@ -849,6 +855,8 @@ ${href}`)) return;
     onopen={(path) => void load(() => doc.open(path))}
     onsave={() => void saved(() => doc.save())}
   />
+
+  <MarkerHelp bind:this={markerHelp} />
 
   <PrintSettings bind:this={printSettings} saved={doc.path !== null} />
 
