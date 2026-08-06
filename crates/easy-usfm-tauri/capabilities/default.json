@@ -8,6 +8,7 @@
   "permissions": [
     "core:default",
     "core:window:allow-set-title",
+    "core:window:allow-destroy",
     "dialog:allow-open",
     "dialog:allow-save",
     "dialog:allow-ask",
@@ -33,6 +34,13 @@
     "`core:window:allow-set-title` puts the file name and the unsaved marker",
     "in the native title bar. `core:default` does not include it, and the",
     "call failed silently in the browser build because the desktop branch",
-    "never runs there -- it took running the real application to see."
+    "never runs there -- it took running the real application to see.",
+    "",
+    "`core:window:allow-destroy` is what actually closes the window. Listening",
+    "for a close request makes the webview responsible for the close as well",
+    "as for vetoing it, so without this the unsaved-changes guard turned into",
+    "a window that could not be shut: clicking the close button rejected and",
+    "did nothing. `core:default` grants neither, and the browser build never",
+    "reaches this path."
   ]
 }
