@@ -93,10 +93,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, recent: &[String]) -> tauri::Result
     // none: there are seven of them, the letters worth having are taken, and a
     // shortcut nobody can guess is a line in a menu rather than a shortcut.
     let insert = SubmenuBuilder::new(app, "&Insert")
-        .item(
-            &MenuItemBuilder::with_id("insert-chapter", "&Chapter")
-                .build(app)?,
-        )
+        .item(&MenuItemBuilder::with_id("insert-chapter", "&Chapter").build(app)?)
         .item(&MenuItemBuilder::with_id("insert-verse", "&Verse").build(app)?)
         .separator()
         .item(
@@ -265,7 +262,11 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, recent: &[String]) -> tauri::Result
     // the same item. Built once so the metadata cannot drift between them.
     let about = PredefinedMenuItem::about(
         app,
-        Some(if MAC { "About Easy USFM" } else { "&About Easy USFM" }),
+        Some(if MAC {
+            "About Easy USFM"
+        } else {
+            "&About Easy USFM"
+        }),
         Some(AboutMetadata {
             name: Some("Easy USFM".into()),
             version: Some(env!("CARGO_PKG_VERSION").into()),
@@ -317,7 +318,10 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, recent: &[String]) -> tauri::Result
         .item(&PredefinedMenuItem::minimize(app, Some("Minimize"))?)
         .item(&PredefinedMenuItem::maximize(app, Some("Zoom"))?)
         .separator()
-        .item(&PredefinedMenuItem::close_window(app, Some("Close Window"))?)
+        .item(&PredefinedMenuItem::close_window(
+            app,
+            Some("Close Window"),
+        )?)
         .build()?;
 
     MenuBuilder::new(app)

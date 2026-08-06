@@ -66,7 +66,10 @@ fn the_whole_set_is_there() {
         "vp-non-ascii-digits.usfm",
         "zero-width-joiners.usfm",
     ] {
-        assert!(names.iter().any(|name| name == expected), "missing {expected}");
+        assert!(
+            names.iter().any(|name| name == expected),
+            "missing {expected}"
+        );
     }
 }
 
@@ -180,7 +183,8 @@ fn composition_does_not_change_the_structure() {
 /// finds and a corpus of ordinary books never does.
 #[test]
 fn a_very_long_chapter_does_not_go_quadratic() {
-    let bytes = std::fs::read(directory().join("single-chapter-40000-lines.usfm")).expect("readable");
+    let bytes =
+        std::fs::read(directory().join("single-chapter-40000-lines.usfm")).expect("readable");
     let loaded = FileFidelity::capture(&bytes).expect("valid UTF-8");
 
     let started = std::time::Instant::now();
@@ -200,7 +204,8 @@ fn a_very_long_chapter_does_not_go_quadratic() {
 /// in the tree, or one missing `\bd*` loses the rest of a book.
 #[test]
 fn an_unclosed_marker_does_not_swallow_the_document() {
-    let bytes = std::fs::read(directory().join("unclosed-character-marker.usfm")).expect("readable");
+    let bytes =
+        std::fs::read(directory().join("unclosed-character-marker.usfm")).expect("readable");
     let loaded = FileFidelity::capture(&bytes).expect("valid UTF-8");
     let session = Session::new(&loaded.text);
 

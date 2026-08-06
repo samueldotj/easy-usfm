@@ -84,12 +84,7 @@ pub enum Held {
 const LOCK: &str = "owner.lock";
 
 /// Reads the lock for a document without taking it.
-pub fn inspect<F: FileSystem>(
-    filesystem: &F,
-    root: &Path,
-    canonical: &Path,
-    us: &Owner,
-) -> Held {
+pub fn inspect<F: FileSystem>(filesystem: &F, root: &Path, canonical: &Path, us: &Owner) -> Held {
     let path = directory_for(root, canonical).join(LOCK);
 
     let Ok(bytes) = filesystem.read(&path) else {

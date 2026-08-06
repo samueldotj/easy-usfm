@@ -123,7 +123,11 @@ pub fn snapshot<F: FileSystem>(
 
     let encoded = serde_json::to_vec_pretty(meta).map_err(std::io::Error::other)?;
 
-    write_atomically(filesystem, &generation.join("snapshot.usfm"), text.as_bytes())?;
+    write_atomically(
+        filesystem,
+        &generation.join("snapshot.usfm"),
+        text.as_bytes(),
+    )?;
     write_atomically(filesystem, &generation.join("meta.json"), &encoded)?;
 
     retain(filesystem, &directory, KEEP);
@@ -202,15 +206,12 @@ pub fn prune<F: FileSystem>(filesystem: &F, root: &Path, now: SystemTime) {
     };
 
     for document in documents {
-        let newest = filesystem
-            .read_dir(&document)
-            .ok()
-            .and_then(|generations| {
-                generations
-                    .iter()
-                    .filter_map(|path| path.file_name()?.to_str()?.parse::<u64>().ok())
-                    .max()
-            });
+        let newest = filesystem.read_dir(&document).ok().and_then(|generations| {
+            generations
+                .iter()
+                .filter_map(|path| path.file_name()?.to_str()?.parse::<u64>().ok())
+                .max()
+        });
 
         let stale = match newest {
             Some(taken) => older_than(taken, now, PRUNE_AFTER),
@@ -242,7 +243,11 @@ fn older_than(taken_at: u64, now: SystemTime, age: Duration) -> bool {
 /// A generation missing either file is skipped rather than failing the whole
 /// read — that is a snapshot interrupted between its two writes, and the one
 /// before it is still perfectly good.
-pub fn newest<F: FileSystem>(filesystem: &F, root: &Path, canonical: &Path) -> Option<(Meta, String)> {
+pub fn newest<F: FileSystem>(
+    filesystem: &F,
+    root: &Path,
+    canonical: &Path,
+) -> Option<(Meta, String)> {
     let directory = directory_for(root, canonical);
     let mut generations: Vec<(u64, PathBuf)> = filesystem
         .read_dir(&directory)
@@ -637,7 +642,14 @@ mod tests {
         let now = SystemTime::UNIX_EPOCH + Duration::from_secs(60 * 24 * 60 * 60);
         let document = Path::new("/books/GEN.usfm");
 
-        snapshot(&RealFs, root, document, "x", &meta(generation(now) + 60_000)).unwrap();
+        snapshot(
+            &RealFs,
+            root,
+            document,
+            "x",
+            &meta(generation(now) + 60_000),
+        )
+        .unwrap();
         prune(&RealFs, root, now);
 
         assert!(directory_for(root, document).exists());

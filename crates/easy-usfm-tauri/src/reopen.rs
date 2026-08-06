@@ -230,7 +230,14 @@ mod tests {
         // work is no less real for the bookkeeping having gone.
         let temp = tempfile::tempdir().unwrap();
         let us = Owner::current(now_ms());
-        snapshot(&RealFs, temp.path(), document(), "recovered", &meta(1, true)).unwrap();
+        snapshot(
+            &RealFs,
+            temp.path(),
+            document(),
+            "recovered",
+            &meta(1, true),
+        )
+        .unwrap();
 
         let seen = examine(&RealFs, temp.path(), document(), &us, Some("on disk"));
 
@@ -277,7 +284,14 @@ mod tests {
         // that is newest and unusable; the one before it is still good.
         let temp = tempfile::tempdir().unwrap();
         let us = Owner::current(now_ms());
-        snapshot(&RealFs, temp.path(), document(), "complete", &meta(10, true)).unwrap();
+        snapshot(
+            &RealFs,
+            temp.path(),
+            document(),
+            "complete",
+            &meta(10, true),
+        )
+        .unwrap();
 
         let torn: PathBuf = crate::recovery::directory_for(temp.path(), document()).join("20");
         std::fs::create_dir_all(&torn).unwrap();

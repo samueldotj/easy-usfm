@@ -51,7 +51,10 @@ pub fn locate(source: &str, from: usize, text: &str) -> Option<ByteSpan> {
     // whitespace is the part allowed to differ and so the part that cannot be
     // searched for. A run of nothing but whitespace has no anchor and no
     // character worth clicking.
-    let leading = text.chars().take_while(|character| character.is_whitespace()).count();
+    let leading = text
+        .chars()
+        .take_while(|character| character.is_whitespace())
+        .count();
     let anchor = text.chars().nth(leading)?;
 
     let mut at = from;
@@ -99,8 +102,7 @@ fn match_run(source: &str, at: usize, text: &str) -> Option<usize> {
 
     for wanted in text.chars() {
         let character = actual.next()?;
-        let same = character == wanted
-            || (character.is_whitespace() && wanted.is_whitespace());
+        let same = character == wanted || (character.is_whitespace() && wanted.is_whitespace());
         if !same {
             return None;
         }
@@ -158,7 +160,10 @@ mod tests {
     #[test]
     fn locates_a_run_from_the_cursor() {
         let source = "\\v 1 In the beginning\n";
-        assert_eq!(locate(source, 5, "In the beginning"), Some(ByteSpan::new(5, 21)));
+        assert_eq!(
+            locate(source, 5, "In the beginning"),
+            Some(ByteSpan::new(5, 21))
+        );
     }
 
     #[test]
@@ -168,7 +173,10 @@ mod tests {
         // its start, and a start one character late puts every click one
         // character early.
         let source = "\\v 1 In the beginning\n";
-        assert_eq!(locate(source, 0, " In the beginning"), Some(ByteSpan::new(4, 21)));
+        assert_eq!(
+            locate(source, 0, " In the beginning"),
+            Some(ByteSpan::new(4, 21))
+        );
     }
 
     #[test]
@@ -255,7 +263,10 @@ mod tests {
         assert_eq!(cursor.take(source, "God said "), Some(ByteSpan::new(5, 14)));
 
         cursor.leave(&ByteSpan::new(14, 19)); // \v 2
-        assert_eq!(cursor.take(source, "God saw\n"), Some(ByteSpan::new(19, 27)));
+        assert_eq!(
+            cursor.take(source, "God saw\n"),
+            Some(ByteSpan::new(19, 27))
+        );
     }
 
     #[test]

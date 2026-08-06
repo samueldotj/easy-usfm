@@ -192,7 +192,11 @@ impl RungOneFailure {
 }
 
 /// Rung 1 — write a temp beside the target, then replace.
-pub(crate) fn rung_one<F: FileSystem>(fs: &F, target: &Path, bytes: &[u8]) -> Result<(), RungOneFailure> {
+pub(crate) fn rung_one<F: FileSystem>(
+    fs: &F,
+    target: &Path,
+    bytes: &[u8],
+) -> Result<(), RungOneFailure> {
     let temp = temp_beside(target);
 
     // The temp is created in the target's own directory, never in $TMPDIR: a

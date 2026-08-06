@@ -143,7 +143,10 @@ mod tests {
     fn the_file_we_last_read_is_not_a_change() {
         let mut watched = Watched::new(hash(b"one"));
 
-        assert_eq!(watched.judge(Some(b"one"), Instant::now()), Verdict::Unchanged);
+        assert_eq!(
+            watched.judge(Some(b"one"), Instant::now()),
+            Verdict::Unchanged
+        );
     }
 
     #[test]

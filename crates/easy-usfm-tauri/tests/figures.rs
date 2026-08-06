@@ -50,7 +50,10 @@ fn refuses_traversal_that_would_reach_a_real_file() {
 #[test]
 fn refuses_a_missing_file() {
     let (_root, document) = fixture();
-    assert_eq!(read(&RealFs, &document, "art/nope.png"), Err(Refusal::Missing));
+    assert_eq!(
+        read(&RealFs, &document, "art/nope.png"),
+        Err(Refusal::Missing)
+    );
 }
 
 #[test]
@@ -96,7 +99,10 @@ fn refuses_a_symlink_that_points_outside() {
         return;
     }
 
-    assert_eq!(read(&RealFs, &document, "art/escape.png"), Err(Refusal::NotLocal));
+    assert_eq!(
+        read(&RealFs, &document, "art/escape.png"),
+        Err(Refusal::NotLocal)
+    );
 }
 
 /// A symlink *inside* the folder is fine, which is what makes the check a
