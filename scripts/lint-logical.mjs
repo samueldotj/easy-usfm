@@ -1,5 +1,16 @@
 /**
- * Fails the build on physical CSS properties.
+ * Two bans the build enforces, because a convention is not a control.
+ *
+ * # Raw markup
+ *
+ * SECURITY 1: "the preview never executes content", and the control is that
+ * *no path exists* from document content to raw markup -- not that escaping is
+ * applied carefully. That holds only while nothing reaches for `{@html}` or
+ * `innerHTML`, and the moment something does, every argument in that section
+ * stops being true. USFM files arrive by email and USB from third parties;
+ * this is the one realistic attack surface the application has.
+ *
+ * # Physical CSS properties
  *
  * UNICODE §8 asks for logical properties throughout — `margin-inline-start`,
  * never `margin-left` — and names this "the single factor determining whether
@@ -96,7 +107,7 @@ function* files(directory) {
 
     const path = join(directory, entry);
     if (statSync(path).isDirectory()) yield* files(path);
-    else if (/\.(css|svelte)$/.test(path)) yield path;
+    else if (/\.(css|svelte|ts|js|mjs)$/.test(path)) yield path;
   }
 }
 
@@ -122,6 +133,48 @@ function* cssLines(source, isCss) {
     }
     if (inStyle) yield [number, line];
   }
+}
+
+/**
+ * Ways to put a string into the DOM as markup.
+ *
+ * `{@html}` is Svelte's; the DOM's own are worth naming too, since reaching
+ * for `innerHTML` gets to the same place without tripping the first rule.
+ */
+const RAW_MARKUP = [
+  [/\{@html\b/, "{@html}"],
+  [/\.innerHTML\s*=/, ".innerHTML ="],
+  [/\.outerHTML\s*=/, ".outerHTML ="],
+  [/insertAdjacentHTML\s*\(/, "insertAdjacentHTML()"],
+];
+
+/**
+ * Raw-markup uses anywhere in a file.
+ *
+ * Not restricted to the style block, and not restricted to the preview: the
+ * ban is on the codebase, because the point is that no path exists at all.
+ */
+export function checkMarkup(source) {
+  const problems = [];
+  let number = 0;
+
+  for (const line of source.split("\n")) {
+    number += 1;
+
+    // No exemption, deliberately. SECURITY 1's control is that no path
+    // exists from document content to markup, and a marker that waved one
+    // through would turn that back into a convention. The tests for this
+    // rule live beside this file rather than under `src/` for the same
+    // reason: their fixtures are the banned strings.
+
+    for (const [pattern, name] of RAW_MARKUP) {
+      if (pattern.test(line)) {
+        problems.push({ number, found: name, use: "typed nodes", line: line.trim() });
+      }
+    }
+  }
+
+  return problems;
 }
 
 /**
@@ -168,6 +221,9 @@ export function scan(root) {
     for (const problem of check(source, path.endsWith(".css"))) {
       problems.push({ ...problem, path });
     }
+    for (const problem of checkMarkup(source)) {
+      problems.push({ ...problem, path });
+    }
   }
   return problems;
 }
@@ -177,7 +233,7 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replaceAll("\\",
   const problems = scan(ROOT);
 
   if (problems.length === 0) {
-    console.log("logical properties: clean");
+    console.log("no raw markup, no physical properties");
     process.exit(0);
   }
 

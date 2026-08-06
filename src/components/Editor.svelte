@@ -145,8 +145,15 @@
             }
             // Also on a document change: typing past a \v marker changes
             // which verse the cursor is in without moving the selection.
+            //
+            // The selection's *start*, not its head. Revealing a span selects
+            // it and leaves the head at its end, which for a verse is the
+            // first character of the next one — so clicking verse 2 in the
+            // preview reported verse 3, and clicking a chapter's first verse
+            // reported the chapter. For a plain cursor the two are the same,
+            // so this costs nothing anywhere else.
             if (update.selectionSet || update.docChanged) {
-              oncursor?.(update.state.selection.main.head);
+              oncursor?.(update.state.selection.main.from);
             }
           }),
         ],

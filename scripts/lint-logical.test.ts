@@ -1,5 +1,11 @@
 /**
- * The logical-property lint catches things — P1.12.
+ * The lint catches things — P1.12 and P3.1.
+ *
+ * Kept beside the script rather than under `src/`, because the raw-markup
+ * cases have to contain the very strings the lint bans and a test file inside
+ * the scanned tree would trip on its own fixtures. Exempting them was the
+ * alternative and is worse: SECURITY 1 says `{@html}` appears *nowhere*, and a
+ * ban with an escape hatch is a convention again.
  *
  * The whole point of these: the lint passed on the first run, against the real
  * tree, which is exactly the situation where "it passes" is no evidence at
@@ -11,10 +17,41 @@ import { describe, expect, it } from "vitest";
 // @ts-expect-error -- a plain ESM script, deliberately not part of the app's
 // TypeScript program. It is build tooling, and giving it types would mean
 // compiling it, which is more machinery than a 200-line checker deserves.
-import { check } from "../../scripts/lint-logical.mjs";
+import { check, checkMarkup } from "./lint-logical.mjs";
 
 const found = (source: string, isCss = true): string[] =>
   (check(source, isCss) as { found: string }[]).map((problem) => problem.found);
+
+const markup = (source: string): string[] =>
+  (checkMarkup(source) as { found: string }[]).map((problem) => problem.found);
+
+describe("banning raw markup", () => {
+  it("catches Svelte's raw directive", () => {
+    expect(markup("{@html node.text}")).toEqual(["{@html}"]);
+  });
+
+  it("catches the DOM routes to the same place", () => {
+    // Reaching for innerHTML gets there without tripping the first rule.
+    expect(markup("element.innerHTML = value;")).toEqual([".innerHTML ="]);
+    expect(markup("element.outerHTML = value;")).toEqual([".outerHTML ="]);
+    expect(markup('el.insertAdjacentHTML("beforeend", s);')).toEqual(["insertAdjacentHTML()"]);
+  });
+
+  it("does not fire on reading innerHTML, which creates no markup", () => {
+    expect(markup("const length = element.innerHTML.length;")).toEqual([]);
+  });
+
+  it("does not fire on ordinary text interpolation", () => {
+    expect(markup("{node.text}")).toEqual([]);
+    expect(markup("<span>{value}</span>")).toEqual([]);
+  });
+
+  it("has no escape hatch", () => {
+    // Deliberate. SECURITY 1's control is that no path exists, and a marker
+    // that waves one through would make it a convention again.
+    expect(markup("{@html x} /* lint-logical-ok: no */")).toEqual(["{@html}"]);
+  });
+});
 
 describe("catching physical properties", () => {
   it("flags the directional ones", () => {

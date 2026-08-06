@@ -13,6 +13,7 @@ import type {
   Match,
   Edit,
   ParseResult,
+  PreviewNode,
   Request,
   Response,
   Resolution,
@@ -20,7 +21,15 @@ import type {
   UsfmVersion,
 } from "../worker/protocol";
 
-export type { Completion, Diagnostic, Match, Resolution, UsfmVersion } from "../worker/protocol";
+export type {
+  Chunk,
+  Completion,
+  Diagnostic,
+  Match,
+  PreviewNode,
+  Resolution,
+  UsfmVersion,
+} from "../worker/protocol";
 
 /** How long typing must stop before the mirror is verified. */
 const IDLE_MS = 400;
@@ -84,6 +93,16 @@ export class Engine {
   ready = $state(false);
   diagnostics = $state<Diagnostic[]>([]);
   chunks = $state<ParseResult["chunks"]>([]);
+
+  /**
+   * The rendered nodes, per chunk.
+   *
+   * Keyed by chunk index, which is also what the preview iterates. Held here
+   * rather than fetched by the component so that a chapter scrolling back into
+   * view is instant -- and so the request is made once per *change*, not once
+   * per mount.
+   */
+  previews = $state<(PreviewNode[] | undefined)[]>([]);
 
   /** Where the cursor is, as a reference. `null` before the first verse. */
   reference = $state<string | null>(null);
@@ -246,6 +265,18 @@ export class Engine {
       this.#pending.set(rev, settle);
       this.#send({ kind: "resolve", rev, text });
     });
+  }
+
+  /**
+   * Asks for a chapter's nodes.
+   *
+   * Answers land in {@link previews}. Requested per chunk and only when that
+   * chunk's revision has moved, which is the whole point of chunking: typing
+   * in chapter forty must not re-render chapter one (ARCHITECTURE 10).
+   */
+  requestPreview(chunk: number): void {
+    if (!this.ready) return;
+    this.#send({ kind: "preview", rev: this.#next(), chunk });
   }
 
   /**
@@ -432,6 +463,18 @@ export class Engine {
         return;
       }
 
+      case "previewed": {
+        // A chunk that has since been merged away by a `\c` edit is simply
+        // dropped: the array is indexed by chunk, and writing past its end
+        // would resurrect a chapter that no longer exists.
+        if (response.chunk < this.chunks.length) {
+          const next = [...this.previews];
+          next[response.chunk] = response.nodes;
+          this.previews = next;
+        }
+        return;
+      }
+
       case "found": {
         const settle = this.#searching.get(response.rev);
         this.#searching.delete(response.rev);
@@ -450,6 +493,7 @@ export class Engine {
 
         this.#applied = response.rev;
         this.desynced = null;
+        this.#refreshPreviews(response.result.chunks);
         this.chunks = response.result.chunks;
         this.diagnostics = response.result.diagnostics;
         this.usfm = response.result.version;
@@ -458,6 +502,32 @@ export class Engine {
         this.#pumpTokens();
         return;
     }
+  }
+
+  /**
+   * Asks again for every chapter whose revision moved.
+   *
+   * Compared against the chunks held *before* this result, so an edit that
+   * touched one chapter costs one request. A split or merge shifts the
+   * chunks after it, and their revisions move with them, so they are
+   * re-requested too -- which is correct rather than wasteful: their indices
+   * now name different chapters.
+   */
+  #refreshPreviews(next: ParseResult["chunks"]): void {
+    const previous = this.chunks;
+    const kept: (PreviewNode[] | undefined)[] = [];
+
+    next.forEach((chunk, index) => {
+      const before = previous[index];
+      // Same chapter at the same index, unchanged: keep what is rendered.
+      if (before && before.rev === chunk.rev && before.number === chunk.number) {
+        kept[index] = this.previews[index];
+      } else {
+        this.requestPreview(index);
+      }
+    });
+
+    this.previews = kept;
   }
 
   /** Counts by severity, for the status bar. */

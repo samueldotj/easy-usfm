@@ -91,6 +91,8 @@ export type Request =
   | { kind: "completions"; rev: number; at: number }
   /** Every match for `query`. `exact` selects the byte-for-byte search. */
   | { kind: "find"; rev: number; query: string; exact: boolean }
+  /** One chapter's nodes, for the preview. */
+  | { kind: "preview"; rev: number; chunk: number }
   /** The *engine's* version, which is a different question entirely. */
   | { kind: "version"; rev: number };
 
@@ -106,6 +108,29 @@ export interface Resolution {
   start: number | null;
   end: number | null;
   message: string | null;
+}
+
+/**
+ * A document node, as the preview renders it.
+ *
+ * ADR-004's USJ shape. Data, never markup: SECURITY 1 puts the control in
+ * there being no path from document content to raw markup, which is a
+ * property of this being a tree of values -- there is no field here that
+ * could carry HTML, so no renderer has to remember not to trust one.
+ */
+export interface PreviewNode {
+  /** The USJ `type`: "para", "verse", "char", "text", and so on. */
+  kind: string;
+  /** The marker without its backslash, where the kind has one. */
+  marker: string | null;
+  attributes: { key: string; value: string }[];
+  /** Char16, or null where the parser recorded no location. */
+  start: number | null;
+  end: number | null;
+  children: PreviewNode[];
+  text: string | null;
+  /** Source that could not be classified, shown verbatim rather than lost. */
+  raw: string | null;
 }
 
 /** One search hit, in the coordinates the editor selects in. */
@@ -146,6 +171,7 @@ export type Response =
   | { kind: "where"; rev: number; reference: string | null }
   | { kind: "completions"; rev: number; completions: Completion[] }
   | { kind: "found"; rev: number; matches: Match[] }
+  | { kind: "previewed"; rev: number; chunk: number; nodes: PreviewNode[] }
   | { kind: "version"; rev: number; version: string }
   /**
    * The worker could not apply what it was sent and its mirror is no longer

@@ -18,6 +18,7 @@ import type {
   Completion,
   Match,
   ParseResult,
+  PreviewNode,
   Request,
   Resolution,
   Response,
@@ -78,6 +79,17 @@ self.onmessage = (event: MessageEvent<Request>) => {
           kind: "resolved",
           rev: request.rev,
           result: session.resolve(request.text) as Resolution,
+        });
+        break;
+      }
+
+      case "preview": {
+        if (!session) return;
+        reply({
+          kind: "previewed",
+          rev: request.rev,
+          chunk: request.chunk,
+          nodes: session.preview(request.chunk) as PreviewNode[],
         });
         break;
       }

@@ -6,6 +6,7 @@
   import FindBar from "./components/FindBar.svelte";
   import FontNotice from "./components/FontNotice.svelte";
   import GoToReference from "./components/GoToReference.svelte";
+  import Preview from "./components/preview/Preview.svelte";
   import SplitPane from "./components/SplitPane.svelte";
   import Toolbar from "./components/Toolbar.svelte";
   import VersionPicker from "./components/VersionPicker.svelte";
@@ -357,9 +358,11 @@
       {/snippet}
 
       {#snippet end()}
-        <div class="placeholder">
-          <p class="hint">The formatted preview arrives with M3.</p>
-        </div>
+        <Preview
+          chunks={engine.chunks}
+          previews={engine.previews}
+          onselect={(start, end) => editor?.reveal(start, end, false)}
+        />
       {/snippet}
     </SplitPane>
   </main>
@@ -484,23 +487,7 @@
     min-block-size: 0;
   }
 
-  .placeholder {
-    display: flex;
-    flex-direction: column;
-    block-size: 100%;
-    overflow: auto;
-    padding: 1rem;
-    color: var(--text-muted);
-    font-size: 0.875rem;
-  }
-
   .warn {
     color: #d97706;
-  }
-
-  .hint {
-    margin-block-start: auto;
-    padding-block-start: 1rem;
-    font-size: 0.8125rem;
   }
 </style>

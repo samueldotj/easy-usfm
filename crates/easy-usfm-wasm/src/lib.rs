@@ -198,6 +198,44 @@ pub struct WireVersion {
     pub assumed: String,
 }
 
+/// A document node, as the preview renders it.
+///
+/// ADR-004's USJ shape, with byte spans turned into Char16 — the one
+/// conversion this boundary exists for. The preview needs them for
+/// click-to-source (P3.6), and a byte offset arriving in JavaScript would
+/// index a UTF-16 string and land in the wrong place.
+///
+/// Sent as data, never as markup. SECURITY §1: "the control is that no path
+/// exists from document content to raw markup", which is a property of this
+/// type being a tree of values rather than of anything the renderer remembers
+/// to do. There is no field here that could carry HTML.
+#[derive(Debug, Serialize)]
+pub struct WireNode {
+    /// The USJ `type`.
+    pub kind: &'static str,
+    /// The marker without its backslash, where the kind has one.
+    pub marker: Option<String>,
+    pub attributes: Vec<WireAttribute>,
+    /// Char16, and `None` where the parser recorded no location — text leaves
+    /// among them. Absent rather than zero, because a fabricated span would
+    /// put click-to-source at the top of the file and look like a rendering
+    /// fault rather than a missing one.
+    pub start: Option<u32>,
+    pub end: Option<u32>,
+    pub children: Vec<WireNode>,
+    /// Text content, for text nodes.
+    pub text: Option<String>,
+    /// Source that could not be classified, kept verbatim so the preview can
+    /// show it rather than drop it (ADR-003).
+    pub raw: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct WireAttribute {
+    pub key: String,
+    pub value: String,
+}
+
 /// One search hit, in the coordinates the editor selects in.
 #[derive(Debug, Serialize)]
 pub struct WireMatch {
@@ -462,6 +500,67 @@ impl Session {
             .collect();
 
         to_js(&matches)
+    }
+
+    /// One chapter's nodes, for the preview (ARCHITECTURE §10).
+    ///
+    /// Per chunk rather than per document: the preview is a keyed each block
+    /// over chunks, so only the chapter whose `rev` changed is asked for
+    /// again. Sending the whole tree on every keystroke is the thing the
+    /// chunking exists to avoid.
+    ///
+    /// An index out of range returns nothing rather than failing. Chunks split
+    /// and merge as `\c` markers are typed, so a request in flight can name a
+    /// chunk that no longer exists — which is ordinary, not an error.
+    pub fn preview(&self, chunk: usize) -> JsValue {
+        if chunk >= self.inner.chunks().len() {
+            return to_js(&Vec::<WireNode>::new());
+        }
+
+        let source = self.inner.source();
+        let nodes: Vec<WireNode> = self
+            .inner
+            .chunk_content(chunk)
+            .iter()
+            .map(|node| self.to_wire(source, node))
+            .collect();
+
+        to_js(&nodes)
+    }
+
+    fn to_wire(&self, source: &str, node: &easy_usfm_core::Node) -> WireNode {
+        let range = node.span.as_ref().map(|span| self.to_char16(source, span));
+
+        WireNode {
+            kind: node.kind.as_str(),
+            marker: node
+                .marker
+                .as_ref()
+                .map(|marker| marker.as_str().to_string()),
+            attributes: node
+                .attributes
+                .iter()
+                .map(|attribute| WireAttribute {
+                    key: attribute.key.clone(),
+                    value: attribute.value.clone(),
+                })
+                .collect(),
+            start: range.map(|range| range.start.get()),
+            end: range.map(|range| range.end.get()),
+            children: node
+                .children
+                .iter()
+                .map(|child| self.to_wire(source, child))
+                .collect(),
+            text: node.text.clone(),
+            // Sliced here, where the source is: the preview shows the bytes
+            // the user wrote, and it has no copy of them to slice from.
+            raw: node
+                .raw
+                .as_ref()
+                .and_then(|span| span.slice(source))
+                .map(str::to_string),
+        }
     }
 
     /// The marker list for a `\` (PRODUCT §6).
