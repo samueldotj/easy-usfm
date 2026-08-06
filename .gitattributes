@@ -18,3 +18,8 @@ corpus/** -text
 *.usfm -text
 *.sfm -text
 *.SFM -text
+
+# The pathological set is byte-exact by definition: BOMs, mixed line endings,
+# a file with no final newline, one that is not valid UTF-8. Git normalising
+# any of that would silently destroy the cases (ARCHITECTURE 12.4).
+corpus/pathological/** -text
