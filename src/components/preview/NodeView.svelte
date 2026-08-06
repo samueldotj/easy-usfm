@@ -24,6 +24,7 @@
    */
 
   import { offsetWithin } from "../../lib/caret";
+  import { figures } from "../../lib/figures.svelte";
   import { sanitizeHref } from "../../lib/href";
   import type { PreviewNode } from "../../worker/protocol";
   import Note from "./Note.svelte";
@@ -39,12 +40,14 @@
     onfollow?: (href: string) => void;
     /** A scripture reference in a link, resolved rather than navigated. */
     onreference?: (reference: string) => void;
+    /** Asks the shell for a figure's image, when images are on (SECURITY §3). */
+    onfigure?: (path: string) => void;
   }
 
-  let { node, onselect, unpaired, onfollow, onreference }: Props = $props();
+  let { node, onselect, unpaired, onfollow, onreference, onfigure }: Props = $props();
 
   /** Everything the recursion passes straight through. */
-  const pass = $derived({ onselect, unpaired, onfollow, onreference });
+  const pass = $derived({ onselect, unpaired, onfollow, onreference, onfigure });
 
   const attribute = (key: string): string | undefined =>
     node.attributes.find((entry) => entry.key === key)?.value;
@@ -132,6 +135,53 @@
   const align = $derived.by(() => {
     const value = node.attributes.find((entry) => entry.key === "align")?.value;
     return value === "center" || value === "end" ? value : "start";
+  });
+
+  /**
+   * What this figure's image is doing, or `null` when images are off.
+   *
+   * `null` is the default state and the one SECURITY §3 asks for -- off unless
+   * the reader has turned them on for this document.
+   */
+  const image = $derived.by(() => {
+    const path = node.kind === "figure" ? attribute("file") : undefined;
+    if (!figures.shown || path === undefined) return null;
+    // Not yet asked for: the request is made in the effect below, and saying
+    // "loading" here rather than "nothing" avoids a frame of placeholder
+    // between turning images on and the first byte arriving.
+    return figures.status(path) ?? { state: "loading" as const };
+  });
+
+  /**
+   * Requested from an effect rather than from the markup, which cannot have
+   * side effects -- and requested from *this* component rather than centrally,
+   * so nothing is read from disk for a chapter nobody has scrolled to. Chapters
+   * render on demand (ARCHITECTURE §10) and this inherits that.
+   */
+  $effect(() => {
+    if (node.kind !== "figure" || !figures.shown) return;
+    const path = attribute("file");
+    if (path !== undefined && figures.status(path) === undefined) onfigure?.(path);
+  });
+
+  /**
+   * The caption, flattened, for an image that has no `alt` of its own.
+   *
+   * A figure in Scripture is not decoration -- it is captioned and referenced --
+   * so an empty `alt` would be asserting something false about it. The caption
+   * is what the file says this image is of, which is the best answer available
+   * without inventing one.
+   */
+  const caption = $derived.by(() => {
+    const parts: string[] = [];
+    const walk = (nodes: readonly PreviewNode[]) => {
+      for (const child of nodes) {
+        if (child.text !== null) parts.push(child.text);
+        walk(child.children);
+      }
+    };
+    walk(node.children);
+    return parts.join("").trim();
   });
 </script>
 
@@ -291,16 +341,47 @@
   </aside>
 {:else if node.kind === "figure"}
   <!--
-    Images are off by default (SECURITY §3), so what renders is the caption and
-    what the file asked for. A figure is not decoration in Scripture — it
+    Images are off by default (SECURITY §3). With the per-document opt-in on,
+    a local file inside the document's folder loads; anything else renders as
+    the placeholder saying why. A figure is not decoration in Scripture — it
     carries a caption and a reference the reader needs — so the placeholder
     shows those rather than a broken-image box.
+
   -->
   <figure class="usfm-figure" data-start={node.start} onclick={select} role="presentation">
     <div class="usfm-figure-frame">
-      <span class="usfm-figure-note">Image not shown</span>
-      {#if attribute("file")}
-        <span class="usfm-figure-src">{attribute("file")}</span>
+      {#if image === null}
+        <span class="usfm-figure-note">Image not shown</span>
+        {#if attribute("file")}
+          <span class="usfm-figure-src">{attribute("file")}</span>
+        {/if}
+        <!--
+          The opt-in, offered where the question comes up. A reader only cares
+          about it while looking at a figure, and a setting buried in a menu is
+          one they have to already know exists. Stops the click so that turning
+          images on does not also move the editor cursor.
+        -->
+        <button
+          class="usfm-figure-show"
+          type="button"
+          onclick={(event) => {
+            event.stopPropagation();
+            figures.toggle(true);
+          }}>Show images from this document</button>
+      {:else if image.state === "ready"}
+        <!--
+          The alt text is the caption the file wrote, because that is what this
+          image is of. An empty alt would be a lie about a figure that carries
+          meaning, and inventing one would be worse.
+        -->
+        <img class="usfm-figure-image" src={image.url} alt={attribute("alt") ?? caption} />
+      {:else if image.state === "refused"}
+        <span class="usfm-figure-note">Image not shown: {image.reason}</span>
+        {#if attribute("file")}
+          <span class="usfm-figure-src">{attribute("file")}</span>
+        {/if}
+      {:else}
+        <span class="usfm-figure-note">Loading…</span>
       {/if}
     </div>
     <figcaption>

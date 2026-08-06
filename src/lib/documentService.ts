@@ -64,6 +64,19 @@ export interface DocumentService {
   confirmDiscard(name: string): Promise<boolean>;
   /** Push the recent list into a native menu, where there is one. */
   setRecentFiles(paths: string[]): Promise<void>;
+  /**
+   * The bytes of a figure the document asked for (SECURITY §3).
+   *
+   * `null` where the host cannot load local files at all, which is every
+   * browser: the web build has nothing to call, so "the web build never loads
+   * local images" is true without a check for it.
+   *
+   * The path is the one the `\fig` carried, sent as written. Resolving it
+   * against the document's folder happens on the other side, so this side
+   * never holds a path outside what the user opened -- and a rejection comes
+   * back as an error message rather than as silence.
+   */
+  readFigure(id: number | null, path: string): Promise<Uint8Array | null>;
   /** What this host cannot do, for the interface to say plainly. */
   readonly limitations: readonly string[];
 }

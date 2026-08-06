@@ -105,13 +105,21 @@ export function webDocuments(): DocumentService {
    */
   let handle: FileSystemFileHandle | null = null;
 
+  // SECURITY §3's last sentence, said out loud rather than left as a figure
+  // that silently never appears.
+  const noImages =
+    "Images in figures are not shown in a browser. A browser hands over one " +
+    "file, not the folder around it, so there is nowhere to read them from.";
+
   const limitations = hasFileSystemAccess()
     ? [
+        noImages,
         "Saving is not atomic: the browser truncates the file before writing, " +
           "so an interrupted save can leave it short. The desktop application " +
           "writes through a temporary file and renames it.",
       ]
     : [
+        noImages,
         "This browser cannot save back to the file you opened. Save downloads " +
           "a copy instead, and you will need to replace the original yourself.",
         "Saving is not atomic.",
@@ -202,6 +210,14 @@ export function webDocuments(): DocumentService {
     async setRecentFiles(): Promise<void> {
       // No native menu to push into. The list still exists in settings and the
       // interface's own recent list reads it.
+    },
+
+    async readFigure(): Promise<Uint8Array | null> {
+      // SECURITY §3: "the web build never loads local images". A browser has
+      // no path to the folder the file came from -- the File System Access API
+      // hands over one file and nothing around it -- so this is not a
+      // restriction being enforced, it is the honest answer.
+      return null;
     },
   };
 }

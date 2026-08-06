@@ -10,6 +10,7 @@
 //! (P6.1).
 
 pub mod document;
+pub mod figure;
 pub mod fs;
 pub mod menu;
 pub mod save;
@@ -49,6 +50,7 @@ pub fn run() {
             document::open_document,
             document::save_document,
             document::close_document,
+            figure::read_figure,
         ])
         .run(tauri::generate_context!())
         .expect("the application failed to start");

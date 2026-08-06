@@ -193,7 +193,7 @@ Ongoing, not an item: stay in contact with the `usfm3` maintainer over increment
 | **P3.5** | M | Chunked keyed rendering, `content-visibility`, first-paint overscan | 2 MB document scrolls at 60 fps; first paint < 800 ms p95 |
 | **P3.6** | L | Click-to-source and scroll sync, both directions | Click lands on the right character across conjuncts and reordered vowel signs |
 | **P3.7** | S | URL sanitizer, inert rendering, external-link confirmation | `javascript:`, `data:`, and protocol-relative payloads render as inert text |
-| **P3.8** | M | Figure policy — off by default, local only, scoped asset protocol | `..` traversal rejected including encoded forms; remote `src` never fetched |
+| **P3.8** | M | Figure policy — off by default, local only, read by the shell for the open document (see SECURITY §3 on the asset protocol) | `..` traversal rejected including encoded forms; remote `src` never fetched |
 | **P3.9** | S | CSP enforced on both targets; `{@html}` lint and CI grep | Both builds run under the real policy with no console violations |
 | **P3.10** | M | Print stylesheet and the `content-visibility` override | Twenty-chapter document prints every chapter; page count asserted in CI |
 | **P3.11** | S | Print settings panel and `@page` generation | Page size, margins, and notes placement apply; settings persist per document |

@@ -13,6 +13,7 @@
   import { doc } from "./lib/document.svelte";
   import { engine } from "./lib/engine.svelte";
   import { fonts } from "./lib/fonts.svelte";
+  import { figures } from "./lib/figures.svelte";
   import { hasInvisibles } from "./lib/invisibles";
   import { ScrollSync, elementFor, scrollTo, topmostOffset, type Pane } from "./lib/scrollsync";
   import { isDesktop } from "./lib/shell";
@@ -142,6 +143,18 @@ ${href}`)) return;
   const limitations = $derived(doc.limitations.join("\n\n"));
 
   /**
+   * Images go back off whenever the document changes (SECURITY 3).
+   *
+   * The opt-in is per document, so trusting one file's images is not a decision
+   * that carries to the next one. Keyed on the generation rather than on the
+   * identifier or the path -- see `DocumentState.generation` for the two ways
+   * those get it wrong, one of them silently and only in a browser.
+   */
+  $effect(() => {
+    figures.reset(doc.generation);
+  });
+
+  /**
    * The editor is told about diagnostics as they arrive.
    *
    * Pushed here rather than passed as a prop because they are not the editor's
@@ -214,6 +227,10 @@ ${href}`)) return;
         case "print":
           window.print();
           break;
+        case "toggle-images":
+          figures.toggle(!figures.shown);
+          break;
+
         case "toggle-invisibles":
           showInvisibles = !showInvisibles;
           break;
@@ -483,6 +500,7 @@ ${href}`)) return;
           onselect={(start, end) => editor?.reveal(start, end, false)}
           onfollow={(href) => void followLink(href)}
           onreference={(reference) => void goToReference(reference)}
+          onfigure={(path) => void figures.request(doc, path)}
           onneed={(chunk) => engine.requestPreview(chunk)}
         />
       {/snippet}

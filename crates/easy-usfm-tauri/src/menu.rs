@@ -140,6 +140,10 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, recent: &[String]) -> tauri::Result
                 .accelerator("CmdOrCtrl+Shift+8")
                 .build(app)?,
         )
+        // Per document and off every time one opens (SECURITY 3), so this is
+        // a view toggle rather than a setting -- which is why it sits here
+        // beside the other one and not in a preferences dialog.
+        .item(&MenuItemBuilder::with_id("toggle-images", "Show I&mages").build(app)?)
         .separator()
         // Ctrl+G on Windows and Linux. macOS wants Cmd+L instead, because
         // Cmd+G is Find Next by universal convention there — P6.1's per-

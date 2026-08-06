@@ -32,6 +32,19 @@ const isStringArray = (value: unknown): value is string[] =>
  */
 class DocumentState {
   id = $state<number | null>(null);
+
+  /**
+   * How many documents have been opened in this session.
+   *
+   * The identity of "the document that is open now", for anything that must
+   * reset when it changes. Not `id`, which the desktop assigns and the browser
+   * leaves `null` forever -- keying on that made the per-document figure
+   * opt-in (SECURITY 3) reset on the desktop and never reset on the web, so
+   * turning images on for one file quietly turned them on for the rest of the
+   * session. Not `path` either: a new document has none, and two of them in a
+   * row would look like the same document.
+   */
+  generation = $state(0);
   path = $state<string | null>(null);
   text = $state("");
   summary = $state<Summary | null>(null);
@@ -70,6 +83,7 @@ class DocumentState {
   }
 
   #adopt(opened: Opened): void {
+    this.generation += 1;
     this.id = opened.id;
     this.path = opened.path;
     this.text = opened.text;
@@ -100,6 +114,19 @@ class DocumentState {
   async pushRecentToMenu(): Promise<void> {
     const service = await documentService();
     await service.setRecentFiles(this.recent);
+  }
+
+  /**
+   * The bytes of a figure this document asked for (SECURITY 3).
+   *
+   * Routed through the document because the document is what the request is
+   * scoped to: the shell resolves the path against *this* file's folder, and
+   * closing it is what ends the access. `null` where the host cannot load
+   * local files, which is every browser.
+   */
+  async readFigure(path: string): Promise<Uint8Array | null> {
+    const service = await documentService();
+    return service.readFigure(this.id, path);
   }
 
   clearRecent(): void {

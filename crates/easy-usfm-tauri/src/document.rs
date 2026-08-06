@@ -226,6 +226,35 @@ pub fn save_document(
     })
 }
 
+impl Documents {
+    /// The folder an open document was read from, for resolving a figure
+    /// against (SECURITY 3).
+    ///
+    /// `Some(None)` for a document that has never been saved: it is open, and
+    /// there is nothing for a relative path to be relative to. The distinction
+    /// matters because the interface says different things about the two.
+    ///
+    /// The directory stays on this side. What the webview sends is the path
+    /// the `\fig` asked for; where that resolves to is decided here, so a
+    /// compromised page has nothing to compose an absolute path out of.
+    pub fn directory_of(&self, id: u64) -> Option<Option<PathBuf>> {
+        let open = self.0.lock().ok()?;
+        let document = open.get(&id)?;
+        Some(
+            document
+                .path
+                .as_deref()
+                .and_then(Path::parent)
+                .map(Path::to_path_buf),
+        )
+    }
+}
+
+/// Closing a document is what drops its figure access (SECURITY 3).
+///
+/// Not a separate revocation step: `read_figure` looks the document up in this
+/// map, so removing it here is the whole of "dropped when the document closes".
+/// A lifetime enforced by there being nothing left to find cannot be forgotten.
 #[tauri::command]
 pub fn close_document(id: u64, documents: tauri::State<'_, Documents>) {
     if let Ok(mut open) = documents.0.lock() {

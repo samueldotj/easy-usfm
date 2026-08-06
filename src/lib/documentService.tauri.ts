@@ -119,6 +119,19 @@ export function tauriDocuments(): DocumentService {
         // every command in it is still reachable by its accelerator.
       }
     },
+
+    async readFigure(id: number | null, path: string): Promise<Uint8Array | null> {
+      // No open document means no folder to be relative to, and the shell
+      // would refuse anyway -- asking would only turn that into an error the
+      // interface has to phrase.
+      if (id === null) return null;
+
+      // Errors propagate. SECURITY §3's refusals are the interesting outcome
+      // here, not an edge case: a document asking for `../../etc/passwd` should
+      // say so in the placeholder rather than look like a missing file.
+      const bytes = await invoke<number[] | Uint8Array>("read_figure", { id, path });
+      return bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    },
   };
 }
 

@@ -29,9 +29,20 @@
     onneed?: (chunk: number) => void;
     /** The preview was scrolled. The editor follows (P3.6). */
     onscroll?: () => void;
+    /** Asks the shell for a figure's image, when images are on (SECURITY §3). */
+    onfigure?: (path: string) => void;
   }
 
-  let { chunks, previews, onselect, onfollow, onreference, onneed, onscroll }: Props = $props();
+  let {
+    chunks,
+    previews,
+    onselect,
+    onfollow,
+    onreference,
+    onneed,
+    onscroll,
+    onfigure,
+  }: Props = $props();
 
   /** The scrolling element, for the scroll sync to measure and move. */
   export function container(): HTMLDivElement | undefined {
@@ -182,7 +193,7 @@
       {#if previews[index]}
         {@const unpaired = unpairedIn(previews[index])}
         {#each previews[index] as node, at (at)}
-          <NodeView {node} {onselect} {unpaired} {onfollow} {onreference} />
+          <NodeView {node} {onselect} {unpaired} {onfollow} {onreference} {onfigure} />
         {/each}
       {:else}
         <!-- In flight. Deliberately not a spinner: a chapter arrives in a few
@@ -462,6 +473,37 @@
     /* A file name from a document, which may be in any script and any
        direction; it must not rearrange the sentence around it. */
     unicode-bidi: isolate;
+  }
+
+  /* The loaded image. Bounded rather than natural size: a figure in a
+     translation file can be any dimensions at all, and one at its own scale
+     would push the Scripture it belongs to off the screen. */
+  :global(.usfm-figure-image) {
+    max-inline-size: 100%;
+    /* Half the pane, so an image never takes the whole reading column. */
+    max-block-size: 50vh;
+    block-size: auto;
+    object-fit: contain;
+  }
+
+  /* The per-document opt-in, offered on the placeholder itself. Quiet: it is
+     an offer, not the thing the reader came for. */
+  :global(.usfm-figure-show) {
+    margin-block-start: 0.35rem;
+    padding-block: 0.15rem;
+    padding-inline: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-size: 0.95em;
+    cursor: pointer;
+  }
+
+  :global(.usfm-figure-show:hover) {
+    border-color: var(--accent);
+    color: var(--text);
   }
 
   :global(.usfm-figure figcaption) {
