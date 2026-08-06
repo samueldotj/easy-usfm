@@ -387,6 +387,7 @@ ${href}`)) return;
           onselect={(start, end) => editor?.reveal(start, end, false)}
           onfollow={(href) => void followLink(href)}
           onreference={(reference) => void goToReference(reference)}
+          onneed={(chunk) => engine.requestPreview(chunk)}
         />
       {/snippet}
     </SplitPane>

@@ -146,6 +146,8 @@ export class Engine {
   #asking = new Map<number, (offers: Completion[]) => void>();
   /** Searches in flight, likewise. */
   #searching = new Map<number, (matches: Match[]) => void>();
+  /** Chapters whose rendering has been asked for and not yet arrived. */
+  #requested = new Set<number>();
 
   /**
    * Connects to the engine.
@@ -276,6 +278,12 @@ export class Engine {
    */
   requestPreview(chunk: number): void {
     if (!this.ready) return;
+    // One request per chapter in flight. The preview asks on every scroll and
+    // on every parse, and without this a chapter near the viewport edge is
+    // requested dozens of times while it sits there.
+    if (this.previews[chunk] || this.#requested.has(chunk)) return;
+
+    this.#requested.add(chunk);
     this.#send({ kind: "preview", rev: this.#next(), chunk });
   }
 
@@ -464,6 +472,7 @@ export class Engine {
       }
 
       case "previewed": {
+        this.#requested.delete(response.chunk);
         // A chunk that has since been merged away by a `\c` edit is simply
         // dropped: the array is indexed by chunk, and writing past its end
         // would resurrect a chapter that no longer exists.
@@ -505,13 +514,18 @@ export class Engine {
   }
 
   /**
-   * Asks again for every chapter whose revision moved.
+   * Drops the rendering of every chapter whose revision moved.
+   *
+   * Dropped rather than re-requested. Asking for all of them here would mean
+   * fifty round trips the moment a fifty-chapter document opens, to render
+   * forty-nine chapters nobody has scrolled to -- which is the cost
+   * ARCHITECTURE 10's overscan exists to avoid. The preview asks for what it
+   * is about to show; this only says what is no longer true.
    *
    * Compared against the chunks held *before* this result, so an edit that
-   * touched one chapter costs one request. A split or merge shifts the
-   * chunks after it, and their revisions move with them, so they are
-   * re-requested too -- which is correct rather than wasteful: their indices
-   * now name different chapters.
+   * touched one chapter drops one rendering. A split or merge shifts the
+   * chunks after it and their indices then name different chapters, so those
+   * are dropped too -- correct rather than wasteful.
    */
   #refreshPreviews(next: ParseResult["chunks"]): void {
     const previous = this.chunks;
@@ -519,15 +533,15 @@ export class Engine {
 
     next.forEach((chunk, index) => {
       const before = previous[index];
-      // Same chapter at the same index, unchanged: keep what is rendered.
       if (before && before.rev === chunk.rev && before.number === chunk.number) {
         kept[index] = this.previews[index];
-      } else {
-        this.requestPreview(index);
       }
     });
 
     this.previews = kept;
+    // A request already in flight names a chapter this may have just changed.
+    // Its answer would overwrite the drop with what the chapter used to be.
+    this.#requested.clear();
   }
 
   /** Counts by severity, for the status bar. */

@@ -25,9 +25,73 @@
     onfollow?: (href: string) => void;
     /** A scripture reference in a link, resolved rather than navigated. */
     onreference?: (reference: string) => void;
+    /** Asks the engine to render a chapter. Called for what is about to show. */
+    onneed?: (chunk: number) => void;
   }
 
-  let { chunks, previews, onselect, onfollow, onreference }: Props = $props();
+  let { chunks, previews, onselect, onfollow, onreference, onneed }: Props = $props();
+
+  /**
+   * Which chapters are worth rendering now (ARCHITECTURE 10).
+   *
+   * "Chapters intersecting the viewport plus one screen of overscan render
+   * immediately; the rest parses in the background." An observer answers the
+   * first half exactly, and answers it again on every scroll without this
+   * component computing geometry.
+   *
+   * `rootMargin: 100%` is the overscan: one screen either side, so a chapter
+   * is asked for before it can be seen rather than as it appears.
+   */
+  let host = $state<HTMLDivElement>();
+
+  $effect(() => {
+    const root = host;
+    if (!root || typeof IntersectionObserver === "undefined") return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          const index = Number((entry.target as HTMLElement).dataset.chunk);
+          if (Number.isInteger(index)) onneed?.(index);
+        }
+      },
+      { root, rootMargin: "100%" },
+    );
+
+    for (const section of root.querySelectorAll("[data-chunk]")) observer.observe(section);
+    return () => observer.disconnect();
+  });
+
+  /**
+   * The rest, once the browser has nothing better to do.
+   *
+   * Without this a chapter is rendered only when it nears the viewport, so
+   * dragging the scrollbar to the end of a long book lands on an empty page
+   * for a round trip. Filling in from idle time means the document is whole by
+   * the time anyone gets there, without competing with first paint for it.
+   */
+  $effect(() => {
+    const missing = chunks
+      .map((_, index) => index)
+      .filter((index) => previews[index] === undefined);
+    if (missing.length === 0) return;
+
+    // `requestIdleCallback` where it exists; Safari still does not have it,
+    // and a timeout is a fair approximation of "not now".
+    const schedule = globalThis.requestIdleCallback ?? ((fn: () => void) => setTimeout(fn, 200));
+    const handle = schedule(() => {
+      // One per idle period. The point is to be invisible, and asking for
+      // fifty chapters in one callback is a frame nobody gets back.
+      const next = missing[0];
+      if (next !== undefined) onneed?.(next);
+    });
+
+    return () => {
+      const cancel = globalThis.cancelIdleCallback ?? clearTimeout;
+      cancel(handle as number);
+    };
+  });
 
   /**
    * Milestones with no partner, per chapter.
@@ -84,10 +148,11 @@
     chunk.number === null ? `header:${index}` : `chapter:${chunk.number}`;
 </script>
 
-<div class="preview">
+<div class="preview" bind:this={host}>
   {#each chunks as chunk, index (keyOf(chunk, index))}
     <section
       class="chapter"
+      data-chunk={index}
       data-rev={chunk.rev}
       aria-label={chunk.number === null ? "Front matter" : `Chapter ${chunk.number}`}
     >
@@ -125,6 +190,17 @@
     /* A measure, not the pane's width. Long lines are hard to read and this
        pane exists to be read. */
     max-inline-size: 38rem;
+
+    /* ARCHITECTURE 10. The browser skips layout, style and paint for a chapter
+       that is off screen, which is what makes a two-megabyte document scroll
+       rather than crawl. The intrinsic size is what keeps the scrollbar
+       roughly honest while that is happening -- without it, every chapter
+       claims zero height and the bar jumps as they render.
+
+       Print overrides this, or a printed document is one page long
+       (PRODUCT 8). That is P3.10's. */
+    content-visibility: auto;
+    contain-intrinsic-size: auto 800px;
   }
 
   .pending {
