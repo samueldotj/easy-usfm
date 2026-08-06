@@ -12,6 +12,7 @@
   import RecoveryPrompt from "./components/RecoveryPrompt.svelte";
   import SplitPane from "./components/SplitPane.svelte";
   import Toolbar from "./components/Toolbar.svelte";
+  import UpdateBar from "./components/UpdateBar.svelte";
   import VersionPicker from "./components/VersionPicker.svelte";
   import { doc } from "./lib/document.svelte";
   import type { FileChanged } from "./lib/documentService";
@@ -20,8 +21,10 @@
   import { figures } from "./lib/figures.svelte";
   import { hasInvisibles } from "./lib/invisibles";
   import { print } from "./lib/print.svelte";
+  import { pwa } from "./lib/pwa.svelte";
   import { ScrollSync, elementFor, scrollTo, topmostOffset, type Pane } from "./lib/scrollsync";
   import { SnapshotSchedule } from "./lib/snapshots";
+  import type { LaunchQueueHost } from "./lib/launch";
   import { isDesktop } from "./lib/shell";
   import { theme, type Theme } from "./lib/theme.svelte";
 
@@ -380,7 +383,13 @@ ${href}`)) return;
     void fonts.inspect(doc.text);
     showInvisibles = hasInvisibles(doc.text);
 
-    if (!isDesktop()) guardTheTab();
+    if (!isDesktop()) {
+      guardTheTab();
+      // The service worker is what makes the offline claim true (P5.1). It
+      // installs in the background and never takes over on its own.
+      void pwa.register();
+      await openWhatTheSystemHandedUs();
+    }
 
     if (isDesktop()) {
       await guardTheWindow();
@@ -604,6 +613,23 @@ ${href}`)) return;
   }
 
   /**
+   * A file the operating system handed to the installed application (P5.2).
+   *
+   * `launchQueue` is how a PWA registered as a `file_handlers` target receives
+   * the file that was double-clicked. It has to be consumed early: the browser
+   * holds the launch until a consumer is set, and setting one after the first
+   * paint means the file arrives at a document already open.
+   */
+  async function openWhatTheSystemHandedUs(): Promise<void> {
+    if (!("launchQueue" in window)) return;
+
+    (window as unknown as LaunchQueueHost).launchQueue.setConsumer((launch) => {
+      const handle = launch.files?.[0];
+      if (handle) void load(() => doc.adopt(handle));
+    });
+  }
+
+  /**
    * The browser's two teardown hooks (FILE-FIDELITY 4, P4.6).
    *
    * `beforeunload` warns on unsaved work, and is the only thing a browser
@@ -743,6 +769,8 @@ ${href}`)) return;
     }}
     ondiscard={() => void doc.clearSnapshots()}
   />
+
+  <UpdateBar />
 
   {#if outside}
     <ExternalChange

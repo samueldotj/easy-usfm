@@ -6,6 +6,15 @@
     <title>Easy USFM</title>
 
     <!--
+      P5.2. Relative, so the same build works at a domain root and in a
+      subdirectory of a static host without a second configuration to keep
+      correct. The Tauri build serves this file too and simply ignores it.
+    -->
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icons/icon-128.png" />
+    <meta name="theme-color" content="#2563eb" />
+
+    <!--
       Empty on purpose. This element exists to carry the Content Security
       Policy nonce.
 

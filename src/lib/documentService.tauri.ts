@@ -130,6 +130,13 @@ export function tauriDocuments(): DocumentService {
       });
     },
 
+    async adopt(): Promise<null> {
+      // Tauri receives a launched file as a process argument, not as a file
+      // handle -- there is nothing here for `launchQueue` to hand over, and
+      // the browser API it belongs to does not exist in this build.
+      return null;
+    },
+
     async setRecentFiles(paths: string[]): Promise<void> {
       try {
         await invoke("set_recent_files", { paths });

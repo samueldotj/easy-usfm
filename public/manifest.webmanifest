@@ -1,0 +1,23 @@
+{
+  "name": "Easy USFM",
+  "short_name": "Easy USFM",
+  "description": "An editor for individual USFM Scripture files. Works offline after first load.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "icons": [
+    { "src": "icons/icon-128.png", "sizes": "128x128", "type": "image/png" },
+    { "src": "icons/icon-256.png", "sizes": "256x256", "type": "image/png", "purpose": "any" }
+  ],
+  "file_handlers": [
+    {
+      "action": "./",
+      "name": "USFM Scripture file",
+      "accept": {
+        "text/plain": [".usfm", ".sfm", ".SFM"]
+      }
+    }
+  ]
+}

@@ -1,11 +1,17 @@
 import { defineConfig } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 
+import { serviceWorker } from "./scripts/service-worker.mjs";
+
 // Vite, no SvelteKit. ARCHITECTURE §1: a single-window editor needs no router,
 // no SSR, and no file-based routing, and Vite's static output is consumed
 // unchanged by both the Tauri bundle and the static host (M5).
 export default defineConfig({
-  plugins: [svelte()],
+  plugins: [svelte(), serviceWorker()],
+
+  // Relative asset URLs, so one build works at a domain root and under a
+  // subdirectory (P5.2). Tauri serves from its own scheme and needs the same.
+  base: "./",
 
   // Tauri drives the dev server and expects it at a known port. Failing rather
   // than silently moving to 1421 matters: the shell would load a stale build

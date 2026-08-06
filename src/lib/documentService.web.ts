@@ -88,6 +88,37 @@ async function fidelity() {
 }
 
 
+/**
+ * Reads a file into an {@link Opened}, whichever way it arrived.
+ *
+ * One reader for the picker and for a file the operating system launched us
+ * with (P5.2): they differ only in how the handle was obtained, and a second
+ * copy of the decode would be a second place for the envelope to be dropped.
+ */
+async function read(file: File): Promise<{ opened: Opened; identity: FileKey; text: string }> {
+  const engine = await fidelity();
+  const bytes = new Uint8Array(await file.arrayBuffer());
+
+  // Throws on bytes that are not UTF-8, which is the honest answer: a lossy
+  // decode makes byte-for-byte preservation impossible before the user has
+  // typed anything (FILE-FIDELITY §1).
+  const decoded = engine.decodeFile(bytes) as Decoded;
+
+  return {
+    opened: {
+      id: null,
+      path: file.name,
+      text: decoded.text,
+      summary: summaryOf(decoded),
+      eols: decoded.eols,
+    },
+    // A browser is never told where a file came from, so a document is
+    // identified by name, size and last-modified (FILE-FIDELITY §4).
+    identity: { name: file.name, size: file.size, lastModified: file.lastModified },
+    text: decoded.text,
+  };
+}
+
 function summaryOf(decoded: Decoded) {
   return {
     encoding: decoded.bom ? "UTF-8 with BOM" : "UTF-8",
@@ -146,6 +177,14 @@ export function webDocuments(): DocumentService {
         "Saving is not atomic.",
       ];
 
+  /** Records what was opened, and hands back what the interface needs. */
+  async function adopted(file: File): Promise<Opened> {
+    const { opened, identity: found, text } = await read(file);
+    identity = found;
+    lastOpenedText = text;
+    return opened;
+  }
+
   return {
     limitations,
 
@@ -170,27 +209,18 @@ export function webDocuments(): DocumentService {
     async open(): Promise<Opened | null> {
       const file = hasFileSystemAccess() ? await pickWithHandle() : await pickWithInput();
       if (!file) return null;
+      return adopted(file);
+    },
 
-      // A browser is never told where a file came from, so a document is
-      // identified by name, size and last-modified (FILE-FIDELITY §4).
-      identity = { name: file.name, size: file.size, lastModified: file.lastModified };
-
-      const engine = await fidelity();
-      const bytes = new Uint8Array(await file.arrayBuffer());
-
-      // Throws on bytes that are not UTF-8, which is the honest answer: a
-      // lossy decode makes byte-for-byte preservation impossible before the
-      // user has typed anything (FILE-FIDELITY §1).
-      const decoded = engine.decodeFile(bytes) as Decoded;
-
-      lastOpenedText = decoded.text;
-      return {
-        id: null,
-        path: file.name,
-        text: decoded.text,
-        summary: summaryOf(decoded),
-        eols: decoded.eols,
-      };
+    /**
+     * A file the operating system opened this application with (P5.2).
+     *
+     * The handle is kept, so Save writes back to the file that was
+     * double-clicked rather than downloading a copy of it.
+     */
+    async adopt(given: FileSystemFileHandle): Promise<Opened | null> {
+      handle = given;
+      return adopted(await given.getFile());
     },
 
     canSaveInPlace(): boolean {

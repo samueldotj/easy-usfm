@@ -294,6 +294,21 @@ class DocumentState {
     this.#refreshHostFacts(service);
   }
 
+  /**
+   * Opens a file the operating system handed over (P5.2).
+   *
+   * The same adoption an ordinary open performs, minus the picker: the user
+   * already chose this file, by double-clicking it.
+   */
+  async adopt(handle: FileSystemFileHandle): Promise<void> {
+    const service = await documentService();
+    const opened = await service.adopt(handle);
+    if (!opened) return;
+
+    this.#adopt(opened);
+    this.#refreshHostFacts(service);
+  }
+
   async open(path?: string): Promise<void> {
     const service = await documentService();
     const opened = await service.open(path);

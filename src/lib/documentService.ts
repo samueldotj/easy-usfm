@@ -58,6 +58,14 @@ export interface DocumentService {
   /** Saves in place. Returns `saved: false` if there is nowhere to save to. */
   save(document: Editable): Promise<SaveOutcome>;
   saveAs(document: Editable): Promise<SaveOutcome>;
+  /**
+   * Opens a file the operating system handed over (P5.2).
+   *
+   * Distinct from `open`, which asks the user to choose one. `null` on a host
+   * with no such mechanism, which is the desktop — Tauri receives a launch
+   * path through its own arguments, not through a file handle.
+   */
+  adopt(handle: FileSystemFileHandle): Promise<Opened | null>;
   /** Whether this host can save in place at all. */
   canSaveInPlace(document: Editable): boolean;
   /** Warn about unsaved work. */
