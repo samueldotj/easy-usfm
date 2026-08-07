@@ -80,6 +80,80 @@ fn class_name(class: easy_usfm_core::markers::MarkerClass) -> &'static str {
     }
 }
 
+/// Parses a short snippet and returns its preview nodes.
+///
+/// For the reference page, which shows what each example *produces* as well as
+/// what it says. Rendering the result is the difference between a reference
+/// that tells you `\q1` is a poetry line and one that shows you the indent.
+///
+/// A throwaway session rather than the open document's: the snippet is not the
+/// user's file, and parsing it there would put example text into their
+/// diagnostics and their preview. Every chunk is flattened, because a snippet
+/// has no chapters to keep apart.
+#[wasm_bindgen(js_name = previewSnippet)]
+pub fn preview_snippet(text: &str) -> JsValue {
+    let session = CoreSession::new(text);
+    let source = session.source();
+
+    let mut cursor = TextCursor::new(0);
+    let nodes: Vec<WireNode> = (0..session.chunks().len())
+        .flat_map(|chunk| session.chunk_content(chunk).to_vec())
+        .collect::<Vec<_>>()
+        .iter()
+        .map(|node| to_wire_snippet(source, node, &mut cursor))
+        .collect();
+
+    to_js(&nodes)
+}
+
+/// The same conversion `Session::preview` performs, without a session.
+///
+/// Duplicated deliberately rather than made generic: the method needs the
+/// session's UTF-16 mapper for offsets that cross to the editor, and a snippet
+/// has no editor to move a caret in. Its spans are never used, so it does not
+/// need one.
+fn to_wire_snippet(
+    source: &str,
+    node: &easy_usfm_core::Node,
+    cursor: &mut TextCursor,
+) -> WireNode {
+    if node.span.is_some() {
+        if let Some(span) = &node.span {
+            cursor.enter(span);
+        }
+    } else if let Some(text) = node.text.as_deref() {
+        let _ = cursor.take(source, text);
+    }
+
+    WireNode {
+        kind: node.kind.as_str(),
+        marker: node.marker.as_ref().map(|m| m.as_str().to_string()),
+        attributes: node
+            .attributes
+            .iter()
+            .map(|a| WireAttribute {
+                key: a.key.clone(),
+                value: a.value.clone(),
+            })
+            .collect(),
+        // No offsets: a snippet is not in the document, so a click on it has
+        // nowhere to go and must not pretend otherwise.
+        start: None,
+        end: None,
+        children: node
+            .children
+            .iter()
+            .map(|child| to_wire_snippet(source, child, cursor))
+            .collect(),
+        text: node.text.clone(),
+        raw: node
+            .raw
+            .as_ref()
+            .and_then(|span| span.slice(source))
+            .map(str::to_string),
+    }
+}
+
 /// The whole marker table, for the reference page.
 ///
 /// Not on the session: the table is the specification, identical for every
