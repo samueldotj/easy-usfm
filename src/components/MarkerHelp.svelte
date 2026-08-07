@@ -13,6 +13,7 @@
    */
 
   import { engine } from "../lib/engine.svelte";
+  import { grouped } from "../lib/markerGroups";
   import { helpTable, matches, type MarkerHelp } from "../lib/markerHelp";
 
   let dialog: HTMLDialogElement | undefined = $state();
@@ -36,22 +37,18 @@
 
   const shown = $derived(table.filter((help) => matches(help, query)));
 
-  /** Grouped by class, in the order a reader meets them. */
-  const ORDER = ["paragraph", "character", "note", "milestone", "unclassified"] as const;
+  /**
+   * Grouped by what the markers do together, not by class.
+   *
+   * A table is five markers that mean nothing apart, and an alphabetical list
+   * by class puts `	c` a long way from `	r`. Each group leads with the
+   * markers in use *together*, which is the part worth copying and the part a
+   * per-marker list structurally cannot show.
+   */
+  const groups = $derived(grouped(shown));
 
-  const groups = $derived(
-    ORDER.map((name) => ({ name, markers: shown.filter((help) => help.class === name) })).filter(
-      (group) => group.markers.length > 0,
-    ),
-  );
-
-  const LABELS: Record<string, string> = {
-    paragraph: "Paragraph markers — begin a line and own the text after it",
-    character: "Character markers — wrap a span of text inside a paragraph",
-    note: "Notes — footnotes and cross-references",
-    milestone: "Milestones — mark a position rather than a span",
-    unclassified: "Other markers",
-  };
+  /** Whether a search is narrowing the list, which changes what to show. */
+  const searching = $derived(query.trim() !== "");
 </script>
 
 <dialog bind:this={dialog} aria-label="USFM marker reference">
@@ -77,9 +74,19 @@
       {shown.length} of {table.length} markers
     </p>
 
-    {#each groups as group (group.name)}
+    {#each groups as group (group.id)}
       <section>
-        <h3>{LABELS[group.name] ?? group.name}</h3>
+        <h3>{group.title}</h3>
+        <p class="blurb">{group.blurb}</p>
+
+        <!--
+          The markers in use together. Hidden while searching, because a
+          combined example for a group the reader has filtered down to one
+          marker is showing them four markers they did not ask about.
+        -->
+        {#if group.example && !searching}
+          <pre class="combined">{group.example}</pre>
+        {/if}
 
         {#each group.markers as help (help.marker)}
           <article class:deprecated={help.deprecated_in !== null}>
@@ -204,6 +211,23 @@
     font-size: 0.9rem;
     color: var(--text-muted);
     font-weight: 600;
+  }
+
+  .blurb {
+    margin-block: 0 0.5rem;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+  }
+
+  /* The group's markers in use together — the part worth copying. Set apart
+     from the per-marker snippets so it reads as the worked example rather than
+     as the first entry's syntax. */
+  .combined {
+    margin-block-end: 0.6rem;
+    padding-block: 0.5rem;
+    padding-inline: 0.7rem;
+    border-inline-start: 3px solid var(--accent);
+    white-space: pre;
   }
 
   article {
