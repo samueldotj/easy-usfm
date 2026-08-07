@@ -13,7 +13,8 @@
    */
 
   import { engine } from "../lib/engine.svelte";
-  import { collapse, grouped } from "../lib/markerGroups";
+  import { collapse, examplesFor, grouped } from "../lib/markerGroups";
+  import NodeView from "./preview/NodeView.svelte";
   import { helpTable, matches, type MarkerHelp } from "../lib/markerHelp";
 
   let dialog: HTMLDialogElement | undefined = $state();
@@ -95,6 +96,7 @@
         -->
         {#each collapse(group.markers) as entry (entry.stem)}
           {@const help = entry.help}
+          {@const source = examplesFor(entry)}
           <article class:deprecated={entry.anyDeprecated}>
             <h4>
               <code>{entry.label}</code>
@@ -129,7 +131,22 @@
               </p>
             {/if}
 
-            <pre>{help.example}</pre>
+            <pre>{source}</pre>
+
+            <!--
+              What the example produces. A reference that says `\q1` is a
+              poetry line tells you less than one that shows the indent, and
+              the levels of a family only differ in ways you can see.
+            -->
+            {#await engine.previewSnippet(source) then nodes}
+              {#if nodes.length > 0}
+                <div class="rendered preview" aria-label="Rendered result">
+                  {#each nodes as node, at (at)}
+                    <NodeView {node} />
+                  {/each}
+                </div>
+              {/if}
+            {/await}
 
             {#if help.attributes.length > 0}
               <p class="detail">
@@ -226,6 +243,17 @@
     margin-block: 0 0.5rem;
     color: var(--text-muted);
     font-size: 0.85rem;
+  }
+
+  /* What an example produces. Given the preview's own class so the Scripture
+     styles apply, and boxed so it reads as output rather than as more page. */
+  .rendered {
+    margin-block: 0.35rem 0.2rem;
+    padding-block: 0.5rem;
+    padding-inline: 0.7rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 0.9rem;
   }
 
   /* The group's markers in use together — the part worth copying. Set apart

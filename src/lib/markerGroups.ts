@@ -452,3 +452,86 @@ function labelFor(levels: string[]): string {
   }
   return parts.join(", ");
 }
+
+/**
+ * Sample text for a marker, so an example reads like Scripture.
+ *
+ * `\q1 Text of the q1 paragraph.` shows the syntax and nothing else. What a
+ * reader is actually asking is what the marker *does* — and an indent is only
+ * visible against a line of real text, which is why these examples are rendered
+ * underneath as well.
+ *
+ * Numbered levels get different text per level, because the whole point of a
+ * level is that it differs from the one above it and identical text hides that.
+ */
+const SAMPLES: Record<string, string[]> = {
+  h: ["Genesis"],
+  toc: ["The First Book of Moses", "Genesis", "Gen"],
+  toca: ["Bereshit", "Bereshit", "Ber"],
+  mt: ["Genesis", "The First Book of Moses", "Called Genesis"],
+  imt: ["The Letter to the Romans", "An Introduction"],
+  ms: ["Book One", "The First Division"],
+  s: ["The Creation", "The Seventh Day", "A Further Note"],
+  is: ["Author", "Date", "Purpose"],
+  q: [
+    "The heavens declare the glory of God;",
+    "and the firmament sheweth his handywork.",
+    "Day unto day uttereth speech,",
+    "and night unto night sheweth knowledge.",
+  ],
+  qm: ["Quoted poetry, first level.", "Quoted poetry, second level."],
+  li: ["Reuben", "Simeon", "Levi"],
+  ili: ["Greeting", "Thanksgiving"],
+  io: ["Greeting", "The gospel", "Paul's plans"],
+  pi: ["An indented paragraph.", "Indented one level further."],
+  th: ["Tribe", "Leader", "Number"],
+  thr: ["Number", "Total"],
+  tc: ["Reuben", "Elizur", "46,500"],
+  tcr: ["46,500", "59,300"],
+  sd: ["", ""],
+};
+
+/**
+ * The text to put after one marker of a family.
+ *
+ * Indexed by the marker's own level, not by its position in the list: `	oc1`
+ * is the long name, `	oc2` the short one and `	oc3` the abbreviation, and
+ * counting positions instead shifted every one of them by a place because the
+ * table also carries a bare `	oc`. The bare form takes level one, which is
+ * what it means.
+ */
+function sampleFor(stem: string, level: number): string {
+  const index = Math.max(0, level - 1);
+  const samples = SAMPLES[stem];
+  if (!samples || samples.length === 0) return "";
+
+  const written = samples[index];
+  if (written !== undefined) return written;
+
+  // Past the samples written, the level is named rather than the last one
+  // repeated. Four lines all reading "Genesis" is the failure this function
+  // exists to avoid -- the whole point of a level is that it differs from the
+  // one above, and identical text hides that. Naming it is visibly sample
+  // text, which is honest: what `\h2` means differently from `\h1` is not
+  // something this page can state.
+  const last = samples[samples.length - 1] ?? "";
+  return `${last} — level ${level}`;
+}
+
+/**
+ * One example line per level, so a family shows what its levels differ by.
+ *
+ * Falls back to the generated single example where the marker takes no text of
+ * its own — a chapter number or a blank line has no sample to write.
+ */
+export function examplesFor(entry: CollapsedEntry): string {
+  const samples = SAMPLES[entry.stem];
+  if (!samples) return entry.help.example;
+
+  return entry.levels
+    .map((marker) => {
+      const text = sampleFor(entry.stem, levelOf(marker) || 1);
+      return text ? `\\${marker} ${text}` : `\\${marker}`;
+    })
+    .join(NL);
+}

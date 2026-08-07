@@ -560,6 +560,21 @@ export class Engine {
     return module.markerTable() as MarkerRow[];
   }
 
+  /**
+   * Parses a short snippet and returns its preview nodes.
+   *
+   * For the reference page, which shows what an example *produces* as well as
+   * what it says. A throwaway parse rather than the open document's: the
+   * snippet is not the user's file, and parsing it there would put example
+   * text into their diagnostics.
+   */
+  async previewSnippet(text: string): Promise<PreviewNode[]> {
+    const module = await import("../generated/wasm/easy_usfm_wasm");
+    const url = (await import("../generated/wasm/easy_usfm_wasm_bg.wasm?url")).default;
+    await module.default({ module_or_path: url });
+    return module.previewSnippet(text) as PreviewNode[];
+  }
+
   /** Counts by severity, for the status bar. */
   get counts(): { error: number; warning: number; information: number } {
     const counts = { error: 0, warning: 0, information: 0 };
