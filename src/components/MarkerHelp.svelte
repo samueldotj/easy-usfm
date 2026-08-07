@@ -13,7 +13,7 @@
    */
 
   import { engine } from "../lib/engine.svelte";
-  import { grouped } from "../lib/markerGroups";
+  import { collapse, grouped } from "../lib/markerGroups";
   import { helpTable, matches, type MarkerHelp } from "../lib/markerHelp";
 
   let dialog: HTMLDialogElement | undefined = $state();
@@ -88,10 +88,19 @@
           <pre class="combined">{group.example}</pre>
         {/if}
 
-        {#each group.markers as help (help.marker)}
-          <article class:deprecated={help.deprecated_in !== null}>
+        <!--
+          One entry per family, not per marker. `\h`, `\h1`, `\h2` and `\h3`
+          are one thing with four spellings, and four entries repeating the
+          same sentence is the wall of text this page exists to avoid.
+        -->
+        {#each collapse(group.markers) as entry (entry.stem)}
+          {@const help = entry.help}
+          <article class:deprecated={entry.anyDeprecated}>
             <h4>
-              <code>\{help.marker}</code>
+              <code>{entry.label}</code>
+              {#if entry.levels.length > 1}
+                <span class="tag">{entry.levels.length} levels</span>
+              {/if}
               {#if help.deprecated_in}
                 <span class="tag warn">deprecated in {help.deprecated_in}</span>
                 {#if help.replacement}

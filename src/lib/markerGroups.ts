@@ -355,3 +355,100 @@ export function grouped(table: MarkerHelp[]): RenderedGroup[] {
   }
   return rendered;
 }
+
+/**
+ * A family of markers that differ only by level, shown as one entry.
+ *
+ * `\h`, `\h1`, `\h2` and `\h3` are one thing with four spellings, and listing
+ * them separately makes the reference four times as long while saying the same
+ * sentence four times. The same is true of `\toc1`–`\toc3`, `\q1`–`\q9`, every
+ * `\th`, `\li` and `\io` level, and the `\mt` titles.
+ *
+ * What is *not* folded together is anything whose stem differs: `\toca` stays
+ * beside `\toc` rather than inside it, because it is the alternative-language
+ * form and merging them would hide that. `\thr` is not `\th`. The rule is
+ * mechanical — same stem, different digits — so it cannot quietly decide that
+ * two markers mean the same thing.
+ */
+export interface CollapsedEntry {
+  /** Grouping key. Not necessarily a real marker. */
+  stem: string;
+  /** Every marker folded in, lowest level first. */
+  levels: string[];
+  /** How the heading reads: `\h`, `\h1`–`\h3`. */
+  label: string;
+  /** Supplies the description, example and attributes. */
+  help: MarkerHelp;
+  /** Whether any level is deprecated, so the entry can say so. */
+  anyDeprecated: boolean;
+}
+
+/**
+ * The marker with its level removed.
+ *
+ * The digits are stripped wherever they sit, so a milestone half or an end
+ * form keeps its suffix: `\qt1-s` and `\qt2-s` share the stem `qt-s`, and
+ * `\s1e` shares one with `\s2e`.
+ */
+export function stemOf(marker: string): string {
+  return marker.replace(/\d+(?=(e|-[a-z]+)?$)/, "");
+}
+
+/** Numeric where the marker is numbered, so `\q10` sorts after `\q9`. */
+function levelOf(marker: string): number {
+  const digits = /\d+/.exec(marker);
+  return digits ? Number(digits[0]) : 0;
+}
+
+/** Folds a group's markers into one entry per family. */
+export function collapse(markers: MarkerHelp[]): CollapsedEntry[] {
+  const families = new Map<string, MarkerHelp[]>();
+
+  for (const help of markers) {
+    const stem = stemOf(help.marker);
+    families.set(stem, [...(families.get(stem) ?? []), help]);
+  }
+
+  return [...families.entries()]
+    .map(([stem, members]) => {
+      const sorted = [...members].sort((left, right) => levelOf(left.marker) - levelOf(right.marker));
+      // The unnumbered form where it exists -- `\h` describes `\h1` better than
+      // `\h1` does -- and otherwise the lowest level.
+      const help = sorted.find((entry) => entry.marker === stem) ?? sorted[0]!;
+
+      return {
+        stem,
+        levels: sorted.map((entry) => entry.marker),
+        label: labelFor(sorted.map((entry) => entry.marker)),
+        help,
+        anyDeprecated: sorted.some((entry) => entry.deprecated_in !== null),
+      };
+    })
+    .sort((left, right) => left.stem.localeCompare(right.stem));
+}
+
+/**
+ * `\h`, `\h1`–`\h3` — the bare form, then the range.
+ *
+ * A range rather than every level spelled out: `\q1`–`\q9` is nine markers, and
+ * a heading listing all nine is the wall of text this collapsing exists to
+ * remove.
+ */
+function labelFor(levels: string[]): string {
+  const bare = levels.filter((marker) => !/\d/.test(marker));
+  const numbered = levels.filter((marker) => /\d/.test(marker));
+
+  const parts = bare.map((marker) => `\\${marker}`);
+
+  if (numbered.length === 1) parts.push(`\\${numbered[0]}`);
+  else if (numbered.length > 1) {
+    parts.push(`\\${numbered[0]}`, `\\${numbered[numbered.length - 1]}`);
+  }
+
+  // An en dash between the ends of a range, commas between separate spellings.
+  if (numbered.length > 1) {
+    const range = parts.splice(-2).join("–");
+    return [...parts, range].join(", ");
+  }
+  return parts.join(", ");
+}

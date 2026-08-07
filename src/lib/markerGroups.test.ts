@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { GROUPS, groupOf, grouped } from "./markerGroups";
+import { GROUPS, collapse, groupOf, grouped } from "./markerGroups";
 import { helpFor, type MarkerRow } from "./markerHelp";
 
 function row(marker: string): MarkerRow {
@@ -105,5 +105,46 @@ describe("the groups themselves", () => {
   it("give every group a distinct id", () => {
     const ids = GROUPS.map((group) => group.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+describe("collapsing levels", () => {
+  const help = (marker: string) => helpFor(row(marker));
+
+  it("folds a numbered family into one entry", () => {
+    const [entry] = collapse(["h", "h1", "h2", "h3"].map(help));
+    expect(entry?.levels).toEqual(["h", "h1", "h2", "h3"]);
+    expect(entry?.label).toBe("\\h, \\h1–\\h3");
+  });
+
+  it("keeps a different stem separate", () => {
+    // `\toca` is the alternative-language form. Folding it into `\toc` would
+    // hide that, so the rule is mechanical -- same stem, different digits --
+    // and can never decide two markers mean the same thing.
+    const entries = collapse(["toc1", "toc2", "toca1", "toca2"].map(help));
+    expect(entries.map((entry) => entry.stem)).toEqual(["toc", "toca"]);
+  });
+
+  it("keeps a milestone's halves apart while folding their levels", () => {
+    const entries = collapse(["qt1-s", "qt2-s", "qt1-e"].map(help));
+    expect(entries.map((entry) => entry.stem).sort()).toEqual(["qt-e", "qt-s"]);
+  });
+
+  it("sorts levels numerically, not as text", () => {
+    // `\q10` comes after `\q9`, which a string sort gets wrong.
+    const [entry] = collapse(["q9", "q10", "q1"].map(help));
+    expect(entry?.levels).toEqual(["q1", "q9", "q10"]);
+  });
+
+  it("describes the family from its unnumbered form where there is one", () => {
+    // `\h` describes `\h1` better than `\h1` does.
+    const [entry] = collapse(["h1", "h"].map(help));
+    expect(entry?.help.marker).toBe("h");
+  });
+
+  it("loses no marker", () => {
+    const markers = ["h", "h1", "h2", "toc1", "toca1", "q1", "q2", "bd"];
+    const folded = collapse(markers.map(help)).flatMap((entry) => entry.levels);
+    expect(folded.sort()).toEqual([...markers].sort());
   });
 });
