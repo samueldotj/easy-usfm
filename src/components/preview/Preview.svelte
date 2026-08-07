@@ -375,7 +375,13 @@
     color: var(--severity-error);
   }
 
-  /* Titles and headings, which are paragraphs in USFM's model. */
+  /* Titles and headings, which are paragraphs in USFM's model.
+   *
+   * Every level is given its own size. They were sharing rules -- `\mt2` with
+   * `\mt3`, `\s1` with `\s2` -- and `\s3`, `\s4` and every `\ms` had none at
+   * all, so a document using three levels of heading rendered all three
+   * identically. A level that looks the same as the level above it is not a
+   * level, and the reader has no way to tell the structure was ever there. */
   :global(.usfm-mt1) {
     font-size: 1.5rem;
     font-weight: 700;
@@ -383,18 +389,98 @@
     margin-block: 1rem;
   }
 
-  :global(.usfm-mt2),
-  :global(.usfm-mt3) {
-    font-size: 1.15rem;
+  :global(.usfm-mt2) {
+    font-size: 1.25rem;
     font-weight: 600;
     text-align: center;
   }
 
+  :global(.usfm-mt3) {
+    font-size: 1.1rem;
+    font-weight: 600;
+    text-align: center;
+  }
+
+  :global(.usfm-mt4) {
+    font-size: 1rem;
+    font-weight: 600;
+    font-style: italic;
+    text-align: center;
+  }
+
+  /* Major sections sit above ordinary ones, so they start larger. */
+  :global(.usfm-ms),
+  :global(.usfm-ms1) {
+    font-size: 1.2rem;
+    font-weight: 700;
+    margin-block: 1.4rem 0.4rem;
+  }
+
+  :global(.usfm-ms2) {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin-block: 1.3rem 0.4rem;
+  }
+
+  :global(.usfm-ms3) {
+    font-size: 1.02rem;
+    font-weight: 700;
+    margin-block: 1.2rem 0.4rem;
+  }
+
   :global(.usfm-s),
-  :global(.usfm-s1),
-  :global(.usfm-s2) {
+  :global(.usfm-s1) {
+    font-size: 1.05rem;
     font-weight: 600;
     margin-block: 1.1rem 0.4rem;
+  }
+
+  :global(.usfm-s2) {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-block: 1rem 0.35rem;
+  }
+
+  :global(.usfm-s3) {
+    font-size: 0.95rem;
+    font-weight: 600;
+    font-style: italic;
+    margin-block: 0.9rem 0.3rem;
+  }
+
+  :global(.usfm-s4) {
+    font-size: 0.92rem;
+    font-weight: 500;
+    font-style: italic;
+    margin-block: 0.8rem 0.3rem;
+  }
+
+  /* ------------------------------------------------------- metadata ---
+   *
+   * `\h` and the `	oc` entries are not Scripture: they are the running
+   * header and the table-of-contents names, which a printed Bible uses around
+   * the text rather than in it. Rendered as plain paragraphs they looked like
+   * body text and like each other, which is what made four levels of `\h`
+   * indistinguishable.
+   *
+   * Shown rather than hidden, because the reading pane is also how someone
+   * checks the head of their file -- but visibly set apart, so nobody reads
+   * them as the book's first words. */
+  :global(.usfm-h),
+  :global(.usfm-h1),
+  :global(.usfm-h2),
+  :global(.usfm-h3),
+  :global(.usfm-toc),
+  :global(.usfm-toc1),
+  :global(.usfm-toc2),
+  :global(.usfm-toc3),
+  :global(.usfm-toca),
+  :global(.usfm-toca1),
+  :global(.usfm-toca2),
+  :global(.usfm-toca3) {
+    color: var(--text-muted);
+    font-size: 0.85em;
+    margin-block: 0.15rem;
   }
 
   :global(.usfm-r),
