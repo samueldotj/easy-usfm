@@ -122,10 +122,7 @@ mod tests {
         for consent in [Consent::Unasked, Consent::Refused] {
             let outcome = check_for_update(consent).await;
             assert!(
-                matches!(
-                    outcome,
-                    Outcome::NotPermitted { .. } | Outcome::CompiledOut
-                ),
+                matches!(outcome, Outcome::NotPermitted { .. } | Outcome::CompiledOut),
                 "consent {consent:?} produced {outcome:?}"
             );
         }
@@ -136,7 +133,10 @@ mod tests {
     async fn the_offline_build_says_so_rather_than_failing() {
         // "Could not reach the update server" in a build with no update server
         // tells the user something false about their own machine.
-        assert_eq!(check_for_update(Consent::Allowed).await, Outcome::CompiledOut);
+        assert_eq!(
+            check_for_update(Consent::Allowed).await,
+            Outcome::CompiledOut
+        );
         assert!(!updates_possible());
     }
 }

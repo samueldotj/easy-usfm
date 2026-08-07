@@ -58,7 +58,9 @@ pub enum Refusal {
     NoDirectory,
     /// The document is not open. A closed document reads nothing.
     Unknown,
-    TooLarge { bytes: u64 },
+    TooLarge {
+        bytes: u64,
+    },
     Missing,
 }
 
@@ -199,7 +201,9 @@ pub fn read(
 ) -> Result<Vec<u8>, Refusal> {
     let path = resolve(directory, asked)?;
 
-    let real = filesystem.canonicalize(&path).map_err(|_| Refusal::Missing)?;
+    let real = filesystem
+        .canonicalize(&path)
+        .map_err(|_| Refusal::Missing)?;
     let root = filesystem
         .canonicalize(directory)
         .map_err(|_| Refusal::NoDirectory)?;
@@ -279,10 +283,19 @@ mod tests {
 
     #[test]
     fn rejects_percent_encoded_traversal() {
-        assert_eq!(resolve(&root(), "%2e%2e%2fsecrets.png"), Err(Refusal::NotLocal));
-        assert_eq!(resolve(&root(), "%2E%2E/secrets.png"), Err(Refusal::NotLocal));
+        assert_eq!(
+            resolve(&root(), "%2e%2e%2fsecrets.png"),
+            Err(Refusal::NotLocal)
+        );
+        assert_eq!(
+            resolve(&root(), "%2E%2E/secrets.png"),
+            Err(Refusal::NotLocal)
+        );
         // Encoded backslash, which is both spellings at once.
-        assert_eq!(resolve(&root(), "%2e%2e%5csecrets.png"), Err(Refusal::NotLocal));
+        assert_eq!(
+            resolve(&root(), "%2e%2e%5csecrets.png"),
+            Err(Refusal::NotLocal)
+        );
     }
 
     #[test]
@@ -300,15 +313,24 @@ mod tests {
         // Not through `Component::Prefix`, which only exists on Windows -- the
         // check has to hold on the platform where `C:/Windows` would otherwise
         // parse as a folder named `C:`.
-        assert_eq!(resolve(&root(), "C:/Windows/win.ini"), Err(Refusal::NotLocal));
+        assert_eq!(
+            resolve(&root(), "C:/Windows/win.ini"),
+            Err(Refusal::NotLocal)
+        );
         assert_eq!(resolve(&root(), "c:map.png"), Err(Refusal::NotLocal));
     }
 
     #[test]
     fn rejects_absolute_paths() {
         assert_eq!(resolve(&root(), "/etc/passwd"), Err(Refusal::NotLocal));
-        assert_eq!(resolve(&root(), "C:/Windows/win.ini"), Err(Refusal::NotLocal));
-        assert_eq!(resolve(&root(), "\\\\server\\share\\x.png"), Err(Refusal::NotLocal));
+        assert_eq!(
+            resolve(&root(), "C:/Windows/win.ini"),
+            Err(Refusal::NotLocal)
+        );
+        assert_eq!(
+            resolve(&root(), "\\\\server\\share\\x.png"),
+            Err(Refusal::NotLocal)
+        );
     }
 
     #[test]
