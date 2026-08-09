@@ -10,6 +10,7 @@
 //! Everything crossing out of this module is one of our own types.
 
 mod diagnostics;
+mod pipes;
 mod tree;
 
 use crate::{Diagnostic, Node};
@@ -43,7 +44,11 @@ impl Backend {
 
     /// The document's top-level nodes, converted to our model.
     pub(crate) fn tree(&self) -> Vec<Node> {
-        tree::convert_document(self.parsed.ast(), self.parsed.source_map())
+        let mut content = tree::convert_document(self.parsed.ast(), self.parsed.source_map());
+        // The parser reads every `|` as an attribute block and throws away
+        // the ones a paragraph cannot hold. See `pipes`.
+        pipes::restore(&mut content, self.parsed.tokens());
+        content
     }
 
     /// The token stream over a byte range.
