@@ -20,7 +20,7 @@
 
 use std::path::{Path, PathBuf};
 
-use easy_usfm_core::{FileFidelity, Session};
+use usfm_core::{FileFidelity, Session};
 
 fn directory() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -91,7 +91,7 @@ fn every_case_is_handled() {
 
         // The invariant checker is the same one the fuzz target asserts, so a
         // pathological file and a fuzzer-found input are held to one standard.
-        easy_usfm_core::invariants::check(&loaded.text).unwrap_or_else(|violation| {
+        usfm_core::invariants::check(&loaded.text).unwrap_or_else(|violation| {
             panic!("{name} broke an invariant: {violation}");
         });
 

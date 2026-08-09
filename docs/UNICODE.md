@@ -20,11 +20,11 @@ This comes first because conflating them is the most likely serious bug in the p
 
 | Space | Unit | Used by | Naming |
 |---|---|---|---|
-| **Byte** | UTF-8 byte | `easy-usfm-core` internals and `usfm3` | `b_start`, `byte_range` |
+| **Byte** | UTF-8 byte | `usfm-core` internals and `usfm3` | `b_start`, `byte_range` |
 | **Char16** | UTF-16 code unit | everything crossing to JavaScript; CodeMirror; DOM ranges | `u16_start`, `Char16Range` |
 | **Grapheme** | extended grapheme cluster | user-facing interaction and display | `g_col`, `grapheme_col` |
 
-> **Byte offsets never leave `easy-usfm-core`. Everything serialized to the frontend is Char16. Grapheme is computed for interaction and display and never round-trips.**
+> **Byte offsets never leave `usfm-core`. Everything serialized to the frontend is Char16. Grapheme is computed for interaction and display and never round-trips.**
 
 Enforced structurally, not by discipline:
 
@@ -99,7 +99,7 @@ This collides with the preservation guarantee:
 | Autocomplete, go-to-reference, diagnostic comparison | NFC |
 | Replace *insertion* text | Exactly as typed — not normalized to match surroundings |
 
-`easy-usfm-core` keeps a normalized search index alongside the raw buffer with an offset map, rebuilt on the same dirty-chunk schedule as the parse, so it costs nothing extra.
+`usfm-core` keeps a normalized search index alongside the raw buffer with an offset map, rebuilt on the same dirty-chunk schedule as the parse, so it costs nothing extra.
 
 **`USFM-I021`** reports mixed forms (Information) with an explicit "Normalize to NFC" command — never automatic. Find and Replace gains a **Match exact byte sequence** toggle, off by default.
 

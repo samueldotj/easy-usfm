@@ -47,7 +47,7 @@ Every objection to Option A is absent: pure Rust, four clean dependencies, WASM 
 
 ## Decision
 
-**`easy-usfm-core` wraps `usfm3`, pinned to an exact version, exposing our own API.**
+**`usfm-core` wraps `usfm3`, pinned to an exact version, exposing our own API.**
 
 **The round-trip risk does not apply.** The usual worry when adopting a parser is byte fidelity, and `usfm3`'s serializer works from the AST and is lossy by construction. We never call it — [ADR-003](003-source-authoritative.md) makes the buffer authoritative and saving writes the buffer. Byte-exactness is a property of our architecture, not of the parser.
 
@@ -68,7 +68,7 @@ Our requirements therefore reduce to four measurable properties: accurate spans,
 
 **The maturity risk.** Five months old at v0.2.1, one maintainer, 6 stars, 461 downloads, with an explicit notice that breaking changes will be made at the author's discretion before 1.0. Honest, and a real hazard for a dependency at the centre of the product. Four controls:
 
-1. **Facade** — `easy-usfm-core` exposes our types. **Nothing above it knows `usfm3` exists.** Worth doing on its own merits, and it makes the dependency swappable.
+1. **Facade** — `usfm-core` exposes our types. **Nothing above it knows `usfm3` exists.** Worth doing on its own merits, and it makes the dependency swappable.
 2. **Exact pin** — `usfm3 = "=0.2.1"`, `Cargo.lock` vendored, updates taken deliberately with the corpus suite as gate.
 3. **Fork is cheap** — MIT, 9,492 lines, four dependencies, no build exotica. A bad afternoon, not a crisis; contrast 207k lines of generated C.
 4. **Become a visible user** — one open issue means a serious downstream consumer is likely welcomed. The author is already contemplating LSP integration, and incremental reparse is plausibly something he wants upstream. This converts single-maintainer risk into collaboration.

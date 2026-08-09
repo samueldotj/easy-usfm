@@ -37,7 +37,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
-use easy_usfm_core::Eol;
+use usfm_core::Eol;
 
 use crate::fs::FileSystem;
 use crate::save::{rung_one, RungOneFailure};

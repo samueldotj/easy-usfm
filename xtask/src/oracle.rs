@@ -1,7 +1,7 @@
 //! The three-way differential oracle — ARCHITECTURE §12.1.
 //!
 //! ```text
-//! corpus file ──┬──► easy-usfm-core   ──► normalized USJ
+//! corpus file ──┬──► usfm-core   ──► normalized USJ
 //!               ├──► usfm3 (direct)   ──► normalized USJ    ← in-process
 //!               └──► usfm-grammar     ──► normalized USJ
 //!                                             │
@@ -99,8 +99,8 @@ pub fn run(options: &OracleOpts) -> Result<()> {
             .to_string();
         compared += 1;
 
-        let ours = normalize(easy_usfm_core::to_usj(
-            easy_usfm_core::Document::parse(source.clone()).content(),
+        let ours = normalize(usfm_core::to_usj(
+            usfm_core::Document::parse(source.clone()).content(),
         ));
         let theirs = normalize(usfm3_usj(&source)?);
 
@@ -400,8 +400,8 @@ mod tests {
     #[test]
     fn our_usj_agrees_with_usfm3_on_a_small_document() {
         let source = "\\id GEN Genesis\n\\c 1\n\\p\n\\v 1 In the beginning.\n";
-        let ours = normalize(easy_usfm_core::to_usj(
-            easy_usfm_core::Document::parse(source.to_string()).content(),
+        let ours = normalize(usfm_core::to_usj(
+            usfm_core::Document::parse(source.to_string()).content(),
         ));
         let theirs = normalize(usfm3_usj(source).expect("usfm3 renders USJ"));
 

@@ -1,5 +1,5 @@
 [package]
-name = "easy-usfm-core"
+name = "usfm-core"
 version = "0.1.0"
 description = "USFM parsing facade: document model, diagnostics, and source spans"
 edition.workspace = true

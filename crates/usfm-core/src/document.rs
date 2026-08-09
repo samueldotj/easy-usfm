@@ -4,7 +4,7 @@ use std::cell::OnceCell;
 
 use crate::backend::Backend;
 use crate::severity::{self, DiagnosticConfig};
-use crate::{ByteSpan, Char16Range, Diagnostic, Node, Utf16Mapper, VerseIndex};
+use crate::{ByteSpan, Char16Range, Diagnostic, LineCol, LineIndex, Node, Utf16Mapper, VerseIndex};
 
 /// A USFM document: its source text, and what the engine has worked out about
 /// it.
@@ -125,6 +125,26 @@ impl Document {
     /// needs it — the conversion is a boundary concern, not a parsing one.
     pub fn mapper(&self) -> &Utf16Mapper {
         self.mapper.get_or_init(|| Utf16Mapper::new(&self.source))
+    }
+
+    /// Line starts for this document's source.
+    ///
+    /// Byte offsets in, line and grapheme column out, with no UTF-16
+    /// conversion anywhere on the path. This is what a consumer without a
+    /// JavaScript boundary should use; [`Document::to_char16`] is for the one
+    /// that has one.
+    pub fn lines(&self) -> &LineIndex {
+        self.mapper().lines()
+    }
+
+    /// Where a byte offset falls, as `line:column`.
+    ///
+    /// Going through the document rather than through [`LineIndex`] directly
+    /// removes the way this can be got wrong: the source and the index cannot
+    /// disagree, because the document owns both. `None` never happens for a
+    /// span this document produced.
+    pub fn line_col(&self, byte: usize) -> Option<LineCol> {
+        self.lines().locate(&self.source, byte)
     }
 
     /// Converts a span into the coordinate space everything outside this crate

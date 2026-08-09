@@ -23,7 +23,7 @@ struct Edit {
 
 fuzz_target!(|input: (String, Vec<Edit>)| {
     let (start, edits) = input;
-    let mut session = easy_usfm_core::Session::new(&start);
+    let mut session = usfm_core::Session::new(&start);
 
     for edit in edits.into_iter().take(32) {
         let length = session.source().len();
@@ -39,19 +39,19 @@ fuzz_target!(|input: (String, Vec<Edit>)| {
             to += 1;
         }
 
-        if session.edit(easy_usfm_core::ByteSpan::new(from, to), &edit.insert).is_err() {
+        if session.edit(usfm_core::ByteSpan::new(from, to), &edit.insert).is_err() {
             return;
         }
     }
 
     let incremental = session.source().to_string();
-    if let Err(violation) = easy_usfm_core::invariants::check(&incremental) {
+    if let Err(violation) = usfm_core::invariants::check(&incremental) {
         panic!("invariant broken after edits: {violation}");
     }
 
     // The state a hundred edits reached must equal a parse of where they
     // arrived. Anything else is drift, and drift is silent.
-    let fresh = easy_usfm_core::Session::new(&incremental);
+    let fresh = usfm_core::Session::new(&incremental);
     assert_eq!(
         session.chunks().len(),
         fresh.chunks().len(),

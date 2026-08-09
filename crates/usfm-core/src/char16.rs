@@ -13,6 +13,7 @@
 //!
 //! [`ByteSpan`]: crate::ByteSpan
 
+use crate::lines::LineIndex;
 use crate::span::ByteSpan;
 
 /// An offset in UTF-16 code units — what JavaScript, CodeMirror, and DOM
@@ -94,30 +95,42 @@ impl Char16Range {
 /// [`Document`]: crate::Document
 #[derive(Debug, Clone)]
 pub struct Utf16Mapper {
-    /// `(byte, char16)` at the start of each line. Always begins with `(0, 0)`.
-    line_starts: Vec<(u32, u32)>,
-    len_bytes: u32,
+    /// The byte half of the line table. Shared rather than duplicated, so a
+    /// caller wanting a line number does not have to come through here — see
+    /// [`LineIndex`].
+    lines: LineIndex,
+    /// UTF-16 column at each line start, parallel to `lines`. Begins with `0`.
+    line_char16: Vec<u32>,
     len_char16: u32,
 }
 
 impl Utf16Mapper {
     /// Builds the line index. One pass over the source.
     pub fn new(source: &str) -> Self {
-        let mut line_starts = vec![(0u32, 0u32)];
+        let mut line_char16 = vec![0u32];
         let mut char16 = 0u32;
 
-        for (byte, character) in source.char_indices() {
+        for character in source.chars() {
             char16 += character.len_utf16() as u32;
             if character == '\n' {
-                line_starts.push(((byte + character.len_utf8()) as u32, char16));
+                line_char16.push(char16);
             }
         }
 
         Self {
-            line_starts,
-            len_bytes: source.len() as u32,
+            lines: LineIndex::new(source),
+            line_char16,
             len_char16: char16,
         }
+    }
+
+    /// The byte-only line table underneath.
+    ///
+    /// Here so that asking "which line?" does not require a UTF-16
+    /// conversion. A consumer with no JavaScript boundary — a compositor
+    /// printing `book.usfm:42:7` — wants this and not [`Char16`].
+    pub const fn lines(&self) -> &LineIndex {
+        &self.lines
     }
 
     /// Length of the indexed source, in UTF-16 code units.
@@ -127,11 +140,11 @@ impl Utf16Mapper {
 
     /// Number of lines in the indexed source.
     pub fn line_count(&self) -> usize {
-        self.line_starts.len()
+        self.lines.line_count()
     }
 
     fn matches(&self, source: &str) -> bool {
-        source.len() == self.len_bytes as usize
+        self.lines.matches(source)
     }
 
     /// Converts a byte offset.
@@ -151,11 +164,8 @@ impl Utf16Mapper {
         }
         let byte = byte.min(source.len());
 
-        let line = self
-            .line_starts
-            .partition_point(|(line_byte, _)| (*line_byte as usize) <= byte)
-            .saturating_sub(1);
-        let (line_byte, line_char16) = self.line_starts[line];
+        let line = self.lines.index_of(byte);
+        let (line_byte, line_char16) = (self.lines.start_at(line), self.line_char16[line]);
 
         let mut char16 = line_char16;
         for (offset, character) in source[line_byte as usize..].char_indices() {
@@ -186,12 +196,7 @@ impl Utf16Mapper {
         }
         let byte = byte.min(source.len());
 
-        // `line_starts` begins with (0, 0), so the count of starts at or before
-        // any offset is already the 1-based line number.
-        Some(
-            self.line_starts
-                .partition_point(|(line_byte, _)| (*line_byte as usize) <= byte) as u32,
-        )
+        Some(self.lines.line(byte))
     }
 
     /// Converts back to a byte offset.
@@ -208,10 +213,10 @@ impl Utf16Mapper {
         let target = offset.0;
 
         let line = self
-            .line_starts
-            .partition_point(|(_, line_char16)| *line_char16 <= target)
+            .line_char16
+            .partition_point(|line_char16| *line_char16 <= target)
             .saturating_sub(1);
-        let (line_byte, line_char16) = self.line_starts[line];
+        let (line_byte, line_char16) = (self.lines.start_at(line), self.line_char16[line]);
 
         let mut char16 = line_char16;
         for (byte, character) in source[line_byte as usize..].char_indices() {

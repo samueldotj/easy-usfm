@@ -18,8 +18,8 @@
 
 use std::path::{Path, PathBuf};
 
-use easy_usfm_core::{Eol, FileFidelity};
 use proptest::prelude::*;
+use usfm_core::{Eol, FileFidelity};
 
 fn round_trips(bytes: &[u8]) -> Result<(), String> {
     let loaded = FileFidelity::capture(bytes).map_err(|error| error.to_string())?;

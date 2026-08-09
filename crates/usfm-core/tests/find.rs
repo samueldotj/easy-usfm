@@ -5,7 +5,7 @@
 //! the word visibly on screen. That is the most infuriating bug this class of
 //! application can have."
 
-use easy_usfm_core::Session;
+use usfm_core::Session;
 
 /// "café" composed, and decomposed. Different bytes, identical on screen.
 const NFC: &str = "caf\u{e9}";

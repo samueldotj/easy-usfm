@@ -13,6 +13,6 @@ name = "easy-usfm"
 path = "src/main.rs"
 
 [dependencies]
-easy-usfm-core = { path = "../easy-usfm-core" }
+usfm-core = { path = "../usfm-core" }
 clap = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

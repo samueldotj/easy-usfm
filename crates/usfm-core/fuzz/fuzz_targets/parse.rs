@@ -19,7 +19,7 @@ fuzz_target!(|data: &[u8]| {
         return;
     };
 
-    if let Err(violation) = easy_usfm_core::invariants::check(text) {
+    if let Err(violation) = usfm_core::invariants::check(text) {
         panic!("invariant broken: {violation}");
     }
 });

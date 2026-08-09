@@ -56,7 +56,7 @@ enum Task {
 
 #[derive(Subcommand)]
 enum MarkersCmd {
-    /// Regenerate crates/easy-usfm-core/markers.toml
+    /// Regenerate crates/usfm-core/markers.toml
     Generate {
         /// Use the cached stylesheets rather than downloading them
         #[arg(long)]

@@ -13,7 +13,7 @@
 
 #![no_main]
 
-use easy_usfm_core::{ByteSpan, Session};
+use usfm_core::{ByteSpan, Session};
 use libfuzzer_sys::fuzz_target;
 
 /// Source, then a sequence of (offset, length, replacement) edits.
@@ -44,7 +44,7 @@ fuzz_target!(|scenario: Scenario| {
 
         // Whatever the edit did, the result must be a document the engine
         // would have produced by parsing that text cold.
-        if let Err(failure) = easy_usfm_core::invariants::check(session.source()) {
+        if let Err(failure) = usfm_core::invariants::check(session.source()) {
             panic!("after editing: {failure}");
         }
 

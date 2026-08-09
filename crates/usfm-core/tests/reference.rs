@@ -6,7 +6,7 @@
 //! the number in the markup, so a reader typing what they see finds nothing
 //! and has no way to know why.
 
-use easy_usfm_core::{Resolution, Session};
+use usfm_core::{Resolution, Session};
 
 /// Tamil Genesis, where every verse also carries its published number.
 fn tamil() -> Session {

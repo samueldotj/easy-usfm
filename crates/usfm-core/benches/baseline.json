@@ -5,7 +5,7 @@
     "the machine these were recorded on, and a ratio cancels that out.",
     "",
     "Regenerate deliberately, never to make a red build green:",
-    "  cargo bench -p easy-usfm-core --bench engine -- --json > results.json",
+    "  cargo bench -p usfm-core --bench engine -- --json > results.json",
     "  node scripts/check-bench.mjs --update results.json",
     "A number that moved because the work genuinely changed is worth",
     "re-recording in the commit that changed it. A number that moved",

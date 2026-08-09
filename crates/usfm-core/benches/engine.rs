@@ -13,12 +13,12 @@
 //! and their ratio the same. The committed baselines are ratios, and the gate
 //! compares ratios.
 //!
-//! Run with `cargo bench -p easy-usfm-core`, and `--` `--json` for the CI gate.
+//! Run with `cargo bench -p usfm-core`, and `--` `--json` for the CI gate.
 
 use std::hint::black_box;
 use std::time::{Duration, Instant};
 
-use easy_usfm_core::{ByteSpan, Session};
+use usfm_core::{ByteSpan, Session};
 
 /// What one measurement produced.
 struct Measured {

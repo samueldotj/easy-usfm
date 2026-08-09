@@ -65,7 +65,7 @@ jobs:
           cargo fuzz run ${{ matrix.target }} corpus/fuzz-seeds -- \
             -max_total_time=$(( ${{ github.event.inputs.minutes || 20 }} * 60 )) \
             -rss_limit_mb=4096
-        working-directory: crates/easy-usfm-core
+        working-directory: crates/usfm-core
 
       # A crash is only useful with the input that caused it.
       - name: Upload any findings
@@ -73,5 +73,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: fuzz-findings-${{ matrix.target }}
-          path: crates/easy-usfm-core/fuzz/artifacts/
+          path: crates/usfm-core/fuzz/artifacts/
           if-no-files-found: ignore

@@ -20,8 +20,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use easy_usfm_core::{Eol, FileFidelity, LineEndings};
 use serde::{Deserialize, Serialize};
+use usfm_core::{Eol, FileFidelity, LineEndings};
 
 use crate::fs::{FileSystem, RealFs};
 use crate::save::{save, SaveError};
@@ -104,7 +104,7 @@ fn next_id() -> u64 {
 /// `\id` is required and a file without one is an error, so an empty buffer
 /// would greet every new document with a diagnostic. Starting from the
 /// smallest valid document is friendlier and just as honest.
-use easy_usfm_core::NEW_DOCUMENT;
+use usfm_core::NEW_DOCUMENT;
 
 impl Documents {
     fn insert(&self, path: Option<PathBuf>, fidelity: FileFidelity) -> u64 {
@@ -293,12 +293,12 @@ mod tests {
     fn a_new_document_is_valid_usfm() {
         // An empty buffer would greet every new document with a missing-\id
         // error, which is a poor way to start.
-        let parsed = easy_usfm_core::Document::parse(NEW_DOCUMENT.to_string());
+        let parsed = usfm_core::Document::parse(NEW_DOCUMENT.to_string());
         assert!(
             !parsed
                 .diagnostics()
                 .iter()
-                .any(|d| d.code == easy_usfm_core::DiagnosticCode::MissingIdMarker),
+                .any(|d| d.code == usfm_core::DiagnosticCode::MissingIdMarker),
             "{:?}",
             parsed.diagnostics()
         );

@@ -24,9 +24,9 @@
 
 use std::path::{Path, PathBuf};
 
-use easy_usfm_core::{Eol, FileFidelity};
 use easy_usfm_tauri_lib::fs::RealFs;
 use easy_usfm_tauri_lib::save::save;
+use usfm_core::{Eol, FileFidelity};
 
 // ------------------------------------------------------------- fixtures ---
 
