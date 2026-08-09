@@ -5,7 +5,7 @@
 # The benchmark reports every timing as a ratio against a calibration loop
 # measured in the same process, so a hosted runner's speed cancels out and the
 # committed baselines mean something on a machine nobody recorded them on. See
-# crates/easy-usfm-core/benches/engine.rs.
+# crates/usfm-core/benches/engine.rs.
 name: bench
 
 on:
@@ -29,7 +29,7 @@ jobs:
 
       - name: Measure
         run: |
-          cargo bench -p easy-usfm-core --bench engine -- --json \
+          cargo bench -p usfm-core --bench engine -- --json \
             | sed -n '/^{/,/^}/p' > bench-results.json
           cat bench-results.json
 

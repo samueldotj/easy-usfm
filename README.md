@@ -72,7 +72,7 @@ Document model    USJ
 
 ```text
 crates/
-├── easy-usfm-core/   facade, incremental session, offsets, diagnostics, indexes
+├── usfm-core/   facade, incremental session, offsets, diagnostics, indexes
 ├── easy-usfm-cli/    parse, diagnostics, usj, bench, check
 ├── easy-usfm-wasm/   wasm-bindgen surface, worker protocol
 └── easy-usfm-tauri/  file access, atomic save, recovery, watching

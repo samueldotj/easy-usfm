@@ -34,7 +34,7 @@ jobs:
       # The desktop shell is excluded and built by `desktop.yml` instead. It
       # pulls in a system webview -- and on Linux, half of GTK -- which would
       # turn an engine job that runs in seconds into one that runs in minutes,
-      # for no benefit: ARCHITECTURE §3 keeps `easy-usfm-core` standalone
+      # for no benefit: ARCHITECTURE §3 keeps `usfm-core` standalone
       # precisely so this job can stay fast and platform-independent.
       - name: Clippy
         run: cargo clippy --workspace --exclude easy-usfm-tauri --all-targets
@@ -46,7 +46,7 @@ jobs:
       # is roughly an order of magnitude slower, so asserting 15 ms there would
       # fail on a correct implementation and train everyone to ignore it.
       - name: Performance budgets
-        run: cargo test --package easy-usfm-core --release --test session -- --nocapture
+        run: cargo test --package usfm-core --release --test session -- --nocapture
 
       # The fuzz invariants, run deterministically over real files. The fuzzer
       # itself needs nightly and hours; this is the same assertions on every
@@ -88,4 +88,4 @@ jobs:
       # build because the failure it catches is a host-only dependency creeping
       # in, which a host build cannot see.
       - name: Build the engine for wasm32
-        run: cargo build --package easy-usfm-core --target wasm32-unknown-unknown
+        run: cargo build --package usfm-core --target wasm32-unknown-unknown

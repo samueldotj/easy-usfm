@@ -3,7 +3,7 @@
 //! ARCHITECTURE §12.3: "Malformed USFM produces diagnostics without crashing"
 //! is a fuzzing claim, and only fuzzing establishes it. The invariants asserted
 //! here are the same ones the corpus tests assert, from
-//! `easy_usfm_core::invariants` — one definition, so the two cannot drift, and
+//! `usfm_core::invariants` — one definition, so the two cannot drift, and
 //! the version that runs on every push is the version the fuzzer is proving.
 //!
 //! Run:
@@ -25,7 +25,7 @@ fuzz_target!(|data: &[u8]| {
         return;
     };
 
-    if let Err(failure) = easy_usfm_core::invariants::check(source) {
+    if let Err(failure) = usfm_core::invariants::check(source) {
         panic!("{failure}\n  input: {source:?}");
     }
 });

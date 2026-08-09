@@ -56,7 +56,7 @@ enum Task {
 
 #[derive(Subcommand)]
 enum MarkersCmd {
-    /// Regenerate crates/easy-usfm-core/markers.toml
+    /// Regenerate crates/usfm-core/markers.toml
     Generate {
         /// Use the cached stylesheets rather than downloading them
         #[arg(long)]
@@ -112,6 +112,12 @@ enum CorpusCmd {
         #[arg(long)]
         copy_to: Option<PathBuf>,
         /// Where to write the manifest (default corpus/manifest.toml)
+        #[arg(long)]
+        manifest: Option<PathBuf>,
+    },
+    /// Refresh the authored fixtures in the manifest, leaving vendored
+    /// entries untouched. Cheap: no network, no re-fetching 200 files.
+    Authored {
         #[arg(long)]
         manifest: Option<PathBuf>,
     },
@@ -175,6 +181,10 @@ fn main() -> Result<()> {
                     copy_to.as_deref(),
                     manifest.as_deref(),
                 )
+            }
+            CorpusCmd::Authored { manifest } => {
+                let path = manifest.unwrap_or_else(|| root.join("corpus").join("manifest.toml"));
+                corpus::refresh_authored(&path)
             }
             CorpusCmd::Verify {
                 corpus: dir,

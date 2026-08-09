@@ -14,7 +14,7 @@
 
 use std::path::{Path, PathBuf};
 
-use easy_usfm_core::{ByteSpan, Document, Node, NodeKind, Session};
+use usfm_core::{ByteSpan, Document, Node, NodeKind, Session};
 
 // ------------------------------------------------------------ comparison ---
 

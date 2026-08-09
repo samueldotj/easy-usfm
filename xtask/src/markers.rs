@@ -210,10 +210,7 @@ pub fn generate(offline: bool) -> Result<()> {
         out.push('\n');
     }
 
-    let destination = root
-        .join("crates")
-        .join("easy-usfm-core")
-        .join("markers.toml");
+    let destination = root.join("crates").join("usfm-core").join("markers.toml");
     std::fs::write(&destination, &out)?;
 
     let new_in_3_1 = records

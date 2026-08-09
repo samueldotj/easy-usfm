@@ -25,7 +25,7 @@ SvelteKit is omitted deliberately: a single-window editor needs no router, no SS
 
 ```text
                     ┌──────────────────────────────┐
-                    │  easy-usfm-core (Rust)       │
+                    │  usfm-core (Rust)       │
                     │  facade: session, incremental │
                     │  offsets, diagnostics, index │
                     │        ↓ wraps ↓             │
@@ -64,16 +64,20 @@ export interface DocumentService {
 
 ```text
 crates/
-├── easy-usfm-core/   facade API, incremental session, Char16 offsets,
+├── usfm-core/   facade API, incremental session, Char16 offsets,
 │                     diagnostic codes, verse index, normalization index
 │                     internal dependency: usfm3 (pinned exactly)
 ├── easy-usfm-wasm/   wasm-bindgen surface, worker protocol
 └── easy-usfm-tauri/  file access, atomic save, recovery, watching, commands
 ```
 
-`easy-usfm-core` builds standalone with no Tauri and no filesystem access, and is a candidate for its own repository — CI in seconds rather than minutes, platform-independence enforced structurally, and the Phase 0 CLI becomes a debugging tool used throughout every later phase.
+`usfm-core` builds standalone with no Tauri and no filesystem access, and is a candidate for its own repository — CI in seconds rather than minutes, platform-independence enforced structurally, and the Phase 0 CLI becomes a debugging tool used throughout every later phase.
 
-**The facade boundary is load-bearing.** [ADR-001](adr/001-parser.md)'s risk controls depend on nothing above `easy-usfm-core` knowing which parser sits underneath.
+**It has a second consumer, and that is why it is no longer called `easy-usfm-core`.** [BibleCompose](https://github.com/samueldotj/bible-compose) composes USFM into print-ready PDFs and needs the same engine; its ADR-001 chose to share this crate rather than build a parser, so that a file reported one way in the editor is not reported another way in the compositor. The `easy-usfm-` prefix would have been misleading in a second product's manifest.
+
+It stays in this repository deliberately, rather than being split out now. Both consumers path-link or git-link it during development, so a change that breaks one is one commit and not a release dance — which is the control that makes a shared pre-1.0 crate safe to depend on. Splitting it out is still open, and would want a reason beyond tidiness.
+
+**The facade boundary is load-bearing.** [ADR-001](adr/001-parser.md)'s risk controls depend on nothing above `usfm-core` knowing which parser sits underneath.
 
 ---
 
@@ -93,7 +97,7 @@ Svelte preview
 
 The arrow points one way. **Easy USFM never serializes a document from its tree** — saving writes the buffer with the fidelity envelope reapplied ([FILE-FIDELITY §1](FILE-FIDELITY.md#1-the-fidelity-envelope)). Byte-exactness is therefore a property of the architecture, not of a dependency. See [ADR-003](adr/003-source-authoritative.md).
 
-**Coordinate spaces.** Byte offsets never leave `easy-usfm-core`; `usfm3` emits them and they stop at the facade. Everything crossing to JavaScript is UTF-16 code units. Full contract in [UNICODE §1](UNICODE.md#1-three-coordinate-spaces).
+**Coordinate spaces.** Byte offsets never leave `usfm-core`; `usfm3` emits them and they stop at the facade. Everything crossing to JavaScript is UTF-16 code units. Full contract in [UNICODE §1](UNICODE.md#1-three-coordinate-spaces).
 
 ## 5. Document model
 
@@ -160,7 +164,7 @@ pub struct VerseEntry {
 
 ### 8.1 Facade
 
-`easy-usfm-core` wraps [`usfm3`](https://crates.io/crates/usfm3), pinned exactly, exposing our own API. Its public API is staged, and the staging is real — `ParsedDocument` uses `OnceCell` per stage, so the cheap path does not pay for the expensive one:
+`usfm-core` wraps [`usfm3`](https://crates.io/crates/usfm3), pinned exactly, exposing our own API. Its public API is staged, and the staging is real — `ParsedDocument` uses `OnceCell` per stage, so the cheap path does not pay for the expensive one:
 
 | Our tier | `usfm3` |
 |---|---|
@@ -169,7 +173,7 @@ pub struct VerseEntry {
 | Semantic passes and diagnostics | `parse_ast(…, diagnostics: true)` |
 | Document model | `to_usj()` |
 
-`usfm3` is an implementation detail of `easy-usfm-core`: pinned to an exact version, never named in the public API, and swappable without touching anything above the facade. [ADR-001](adr/001-parser.md).
+`usfm3` is an implementation detail of `usfm-core`: pinned to an exact version, never named in the public API, and swappable without touching anything above the facade. [ADR-001](adr/001-parser.md).
 
 ### 8.2 Incremental parsing
 
@@ -270,7 +274,7 @@ Round-trip and save-failure tests are in [FILE-FIDELITY §5](FILE-FIDELITY.md#5-
 Two independent mature implementations emit USJ — the model we adopt. A dev-only harness parses the corpus with all three and diffs structurally:
 
 ```text
-corpus file ──┬──► easy-usfm-core   ──► normalized USJ
+corpus file ──┬──► usfm-core   ──► normalized USJ
               ├──► usfm3 (direct)   ──► normalized USJ    ← in-process, no CLI
               └──► usfm-grammar     ──► normalized USJ
                                               │

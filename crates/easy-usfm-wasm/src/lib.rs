@@ -17,11 +17,11 @@
 //! place — silently, and only for non-ASCII text (UNICODE §1). The conversion
 //! happens at this boundary and nowhere else.
 
-use easy_usfm_core::{
+use serde::Serialize;
+use usfm_core::{
     ByteSpan, Char16, Char16Range, Eol, LineEndings, Resolution, Session as CoreSession, Severity,
     TextCursor, TokenKind, Utf16Mapper, Version,
 };
-use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
 /// Sets up panic reporting. Idempotent; the worker calls it once on load.
@@ -65,12 +65,12 @@ pub struct WireLoaded {
 /// The starting point for a new document, so both shells give the same one.
 #[wasm_bindgen(js_name = newDocument)]
 pub fn new_document() -> String {
-    easy_usfm_core::NEW_DOCUMENT.to_string()
+    usfm_core::NEW_DOCUMENT.to_string()
 }
 
 /// The class, as the reference page groups by.
-fn class_name(class: easy_usfm_core::markers::MarkerClass) -> &'static str {
-    use easy_usfm_core::markers::MarkerClass;
+fn class_name(class: usfm_core::markers::MarkerClass) -> &'static str {
+    use usfm_core::markers::MarkerClass;
     match class {
         MarkerClass::Paragraph => "paragraph",
         MarkerClass::Character => "character",
@@ -112,7 +112,7 @@ pub fn preview_snippet(text: &str) -> JsValue {
 /// session's UTF-16 mapper for offsets that cross to the editor, and a snippet
 /// has no editor to move a caret in. Its spans are never used, so it does not
 /// need one.
-fn to_wire_snippet(source: &str, node: &easy_usfm_core::Node, cursor: &mut TextCursor) -> WireNode {
+fn to_wire_snippet(source: &str, node: &usfm_core::Node, cursor: &mut TextCursor) -> WireNode {
     if node.span.is_some() {
         if let Some(span) = &node.span {
             cursor.enter(span);
@@ -156,7 +156,7 @@ fn to_wire_snippet(source: &str, node: &easy_usfm_core::Node, cursor: &mut TextC
 /// document, so asking a particular document about it would imply otherwise.
 #[wasm_bindgen(js_name = markerTable)]
 pub fn marker_table() -> JsValue {
-    let rows: Vec<WireMarker> = easy_usfm_core::markers::all()
+    let rows: Vec<WireMarker> = usfm_core::markers::all()
         .map(|info| WireMarker {
             marker: info.marker,
             class: class_name(info.class),
@@ -181,7 +181,7 @@ pub fn marker_table() -> JsValue {
 /// impossible before the user has typed anything.
 #[wasm_bindgen(js_name = decodeFile)]
 pub fn decode_file(bytes: &[u8]) -> Result<JsValue, JsValue> {
-    let loaded = easy_usfm_core::FileFidelity::capture(bytes)
+    let loaded = usfm_core::FileFidelity::capture(bytes)
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
     let newlines = loaded.text.matches('\n').count();
@@ -226,7 +226,7 @@ pub fn encode_file(text: &str, bom: bool, eols: JsValue) -> Result<Vec<u8>, JsVa
         }
     };
 
-    let fidelity = easy_usfm_core::FileFidelity {
+    let fidelity = usfm_core::FileFidelity {
         bom,
         eol: endings,
         final_newline: text.ends_with('\n'),
@@ -462,7 +462,7 @@ impl Session {
     /// sides find out they have stopped agreeing.
     #[wasm_bindgen(getter)]
     pub fn checksum(&self) -> u32 {
-        easy_usfm_core::checksum(self.inner.source())
+        usfm_core::checksum(self.inner.source())
     }
 
     /// Applies one edit, in UTF-16 offsets against the document as this side
@@ -668,12 +668,7 @@ impl Session {
         to_js(&nodes)
     }
 
-    fn to_wire(
-        &self,
-        source: &str,
-        node: &easy_usfm_core::Node,
-        cursor: &mut TextCursor,
-    ) -> WireNode {
+    fn to_wire(&self, source: &str, node: &usfm_core::Node, cursor: &mut TextCursor) -> WireNode {
         // A text leaf has no span of its own; it has to be found. Everything
         // else moves the cursor to where it is, so the search for the next run
         // starts after the marker rather than before it.
@@ -737,7 +732,7 @@ impl Session {
             .unwrap_or(source.len());
 
         let context = self.inner.completion_context(byte);
-        to_js(&easy_usfm_core::completions(&context, source))
+        to_js(&usfm_core::completions(&context, source))
     }
 
     /// How a Char16 offset reads as a reference, for the status bar.

@@ -664,6 +664,7 @@ pub fn select(
             RenderEntry {
                 path: format!("core/{name}"),
                 sha256: c.sha256.clone(),
+                origin: "vendored".to_string(),
                 bytes: c.bytes,
                 translation: tid,
                 source: get("source"),
@@ -678,11 +679,23 @@ pub fn select(
             }
         })
         .collect();
-    entries.sort_by(|a, b| a.path.cmp(&b.path));
-
+    // The authored fixtures are scanned rather than listed, so regenerating the
+    // manifest cannot quietly drop them. They exist because a corpus of real
+    // published Scripture does not reliably contain a byte-order mark, a
+    // CRLF file, a sidebar, or a `\z` marker — the selector can only choose
+    // from what translations actually publish.
     let manifest_path = manifest_path
         .map(Path::to_path_buf)
         .unwrap_or_else(|| repo_root().join("corpus").join("manifest.toml"));
+
+    // Relative to the corpus this manifest belongs to, not to the repository:
+    // `select --manifest` is given a different corpus by the xtask tests, and
+    // reaching past it to the real one would have them selecting against
+    // fixtures they never put there.
+    entries.extend(authored_entries(
+        manifest_path.parent().unwrap_or(Path::new(".")),
+    )?);
+    entries.sort_by(|a, b| a.path.cmp(&b.path));
     std::fs::create_dir_all(manifest_path.parent().unwrap())?;
     std::fs::write(&manifest_path, manifest::render(&entries))?;
     eprintln!("manifest written to {}", manifest_path.display());
@@ -707,6 +720,79 @@ fn load_provenance(root: &Path) -> serde_json::Map<String, serde_json::Value> {
 }
 
 // ---------------------------------------------------------------- verify ---
+
+/// Rewrite the authored half of the manifest, leaving the vendored half alone.
+///
+/// `select` regenerates everything and needs the fetch cache to do it. Adding
+/// or editing a fixture should not require re-downloading 200 translations.
+pub fn refresh_authored(manifest_path: &Path) -> Result<()> {
+    let existing = manifest::load(manifest_path)?;
+    let mut entries: Vec<RenderEntry> = existing
+        .files
+        .iter()
+        .filter(|e| e.origin != "authored")
+        .map(|e| RenderEntry {
+            path: e.path.clone(),
+            sha256: e.sha256.clone(),
+            origin: e.origin.clone(),
+            bytes: e.bytes,
+            translation: e.translation.clone(),
+            source: e.source.clone(),
+            language: e.language.clone(),
+            script_declared: e.script_declared.clone(),
+            direction: e.direction.clone(),
+            copyright: e.copyright.clone(),
+            redistributable: e.redistributable.clone(),
+            scripts: e.scripts.iter().cloned().collect(),
+            features: e.features.iter().cloned().collect(),
+            traits: e.traits.iter().cloned().collect(),
+        })
+        .collect();
+
+    let corpus = manifest_path.parent().unwrap_or(Path::new("."));
+    let authored = authored_entries(corpus)?;
+    println!("authored   {} fixture(s)", authored.len());
+    entries.extend(authored);
+    entries.sort_by(|a, b| a.path.cmp(&b.path));
+
+    std::fs::write(manifest_path, manifest::render(&entries))?;
+    println!("wrote      {}", manifest_path.display());
+    Ok(())
+}
+
+/// Manifest entries for `corpus/pathological`, built by reading the files.
+///
+/// No provenance to record: these were written here. `verify` knows that and
+/// does not ask them for a source URL.
+fn authored_entries(corpus: &Path) -> Result<Vec<RenderEntry>> {
+    let dir = corpus.join("pathological");
+    if !dir.exists() {
+        return Ok(Vec::new());
+    }
+    let mut out = Vec::new();
+    for f in usfm_files(&dir) {
+        let name = f.file_name().unwrap().to_string_lossy().to_string();
+        let raw = std::fs::read(&f).with_context(|| format!("reading {}", f.display()))?;
+        let profile = Profile::of(&raw);
+        out.push(RenderEntry {
+            path: format!("pathological/{name}"),
+            sha256: sha256_hex(&raw),
+            origin: "authored".to_string(),
+            bytes: raw.len() as u64,
+            translation: String::new(),
+            source: String::new(),
+            language: String::new(),
+            script_declared: String::new(),
+            direction: String::new(),
+            copyright: "Authored for this repository; same licence as the code.".to_string(),
+            redistributable: "True".to_string(),
+            scripts: profile.scripts.clone(),
+            features: profile.features.clone(),
+            traits: profile.traits.clone(),
+        });
+    }
+    Ok(out)
+}
 
 pub fn verify(corpus: &Path, skip_coverage: bool) -> Result<()> {
     let manifest_path = corpus.join("manifest.toml");
@@ -751,8 +837,15 @@ pub fn verify(corpus: &Path, skip_coverage: bool) -> Result<()> {
             ));
             continue;
         }
-        if e.source.is_empty() {
+        let authored = e.origin == "authored";
+        if e.source.is_empty() && !authored {
             errors.push(format!("{}: no source URL recorded", e.path));
+        }
+        if authored && !e.source.is_empty() {
+            errors.push(format!(
+                "{}: origin is \"authored\" but a source URL is recorded",
+                e.path
+            ));
         }
         if e.copyright.is_empty() {
             warnings.push(format!("{}: no copyright line recorded", e.path));
@@ -770,13 +863,16 @@ pub fn verify(corpus: &Path, skip_coverage: bool) -> Result<()> {
         traits.extend(detect_traits(&raw));
     }
 
-    let core = corpus.join("core");
-    if core.exists() {
-        for f in usfm_files(&core) {
+    for sub in ["core", "pathological"] {
+        let dir = corpus.join(sub);
+        if !dir.exists() {
+            continue;
+        }
+        for f in usfm_files(&dir) {
             let n = f.file_name().unwrap().to_string_lossy().to_string();
             if !seen.contains(&n) {
                 errors.push(format!(
-                    "corpus/core/{n}: present on disk but not in the manifest"
+                    "corpus/{sub}/{n}: present on disk but not in the manifest"
                 ));
             }
         }

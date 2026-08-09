@@ -15,7 +15,7 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 arbitrary = { version = "1", features = ["derive"] }
-easy-usfm-core = { path = ".." }
+usfm-core = { path = ".." }
 
 [[bin]]
 name = "parse"

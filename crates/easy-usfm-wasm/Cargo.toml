@@ -27,7 +27,7 @@ wasm-opt = [
 ]
 
 [dependencies]
-easy-usfm-core = { path = "../easy-usfm-core" }
+usfm-core = { path = "../usfm-core" }
 wasm-bindgen = "0.2"
 serde.workspace = true
 serde_json.workspace = true

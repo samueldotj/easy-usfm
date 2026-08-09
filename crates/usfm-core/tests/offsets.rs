@@ -12,8 +12,8 @@
 //! catches real bugs**, because it checks the mapper against what JavaScript
 //! will actually do with the number.
 
-use easy_usfm_core::{ByteSpan, Char16, Utf16Mapper};
 use proptest::prelude::*;
+use usfm_core::{ByteSpan, Char16, Utf16Mapper};
 
 /// The alphabet from UNICODE §9.1: ASCII, conjuncts, a reordered vowel sign,
 /// Khmer and Myanmar clusters, Hebrew and Arabic, a combining mark, astral
@@ -223,11 +223,11 @@ fn a_node_cannot_be_serialized_either() {
     // Nodes carry byte spans, so the ban has to extend to anything holding
     // one. This is the check that catches a well-meaning derive on the tree.
     assert!(
-        !<Probe<easy_usfm_core::Node> as NotSerializable>::SERIALIZABLE,
+        !<Probe<usfm_core::Node> as NotSerializable>::SERIALIZABLE,
         "Node implements Serialize — it carries ByteSpan, so byte offsets leak with it"
     );
     assert!(
-        !<Probe<easy_usfm_core::Diagnostic> as NotSerializable>::SERIALIZABLE,
+        !<Probe<usfm_core::Diagnostic> as NotSerializable>::SERIALIZABLE,
         "Diagnostic implements Serialize — it carries ByteSpan"
     );
 }
@@ -238,7 +238,7 @@ fn a_char16_offset_can_be_serialized() {
     // The other half of the boundary. A ban with nothing on the far side of
     // it would be satisfied by a crate that simply cannot talk to anything.
     assert!(<Probe<Char16>>::SERIALIZABLE);
-    assert!(<Probe<easy_usfm_core::Char16Range>>::SERIALIZABLE);
+    assert!(<Probe<usfm_core::Char16Range>>::SERIALIZABLE);
 }
 
 #[test]

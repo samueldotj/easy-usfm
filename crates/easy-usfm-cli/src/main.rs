@@ -1,6 +1,6 @@
 //! Command-line access to the USFM engine.
 //!
-//! ARCHITECTURE §3 notes that `easy-usfm-core` builds standalone with no Tauri
+//! ARCHITECTURE §3 notes that `usfm-core` builds standalone with no Tauri
 //! and no filesystem, and that the Phase 0 CLI "becomes a debugging tool used
 //! throughout every later phase". That is what this is for: when the preview
 //! shows something unexpected in M3, the question *is it the engine or the
@@ -20,7 +20,7 @@ use std::process::ExitCode;
 use std::time::Instant;
 
 use clap::{Parser, Subcommand};
-use easy_usfm_core::{invariants, to_usj, Document, Severity};
+use usfm_core::{invariants, to_usj, Document, Severity};
 
 #[derive(Parser)]
 #[command(name = "easy-usfm", about = "USFM engine tools", version)]
@@ -212,7 +212,7 @@ fn position(source: &str, offset: usize) -> (usize, usize) {
     let before = &source[..offset.min(source.len())];
     let line = before.matches('\n').count() + 1;
     let line_start = before.rfind('\n').map_or(0, |index| index + 1);
-    let column = easy_usfm_core::grapheme::column(&source[line_start..], offset - line_start) + 1;
+    let column = usfm_core::grapheme::column(&source[line_start..], offset - line_start) + 1;
     (line, column)
 }
 

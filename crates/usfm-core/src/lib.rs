@@ -2,7 +2,7 @@
 //! locations.
 //!
 //! ```
-//! use easy_usfm_core::{Document, NodeKind};
+//! use usfm_core::{Document, NodeKind};
 //!
 //! let document = Document::parse("\\id GEN\n\\c 1\n\\p\n\\v 1 In the beginning\n");
 //! let kinds: Vec<_> = document.descendants().map(|node| node.kind).collect();
@@ -42,6 +42,7 @@ mod fidelity;
 pub mod grapheme;
 pub mod invariants;
 pub mod joiners;
+mod lines;
 pub mod markers;
 mod node;
 mod normalize;
@@ -59,6 +60,7 @@ pub use completion::{completions, frequencies, Completion, Context as Completion
 pub use diagnostic::{Diagnostic, DiagnosticCode, Severity};
 pub use document::Document;
 pub use fidelity::{DecodeError, Eol, FileFidelity, LineEndings, Loaded};
+pub use lines::{LineCol, LineIndex};
 pub use node::{Attribute, Marker, Node, NodeKind};
 pub use normalize::NormalizedIndex;
 pub use reference::{decimal_value, parse_digits, Reference, Resolution};

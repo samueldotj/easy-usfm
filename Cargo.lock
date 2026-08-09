@@ -1019,21 +1019,8 @@ name = "easy-usfm-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
- "easy-usfm-core",
  "serde_json",
-]
-
-[[package]]
-name = "easy-usfm-core"
-version = "0.1.0"
-dependencies = [
- "blake3",
- "proptest",
- "serde",
- "serde_json",
- "unicode-normalization",
- "unicode-segmentation",
- "usfm3",
+ "usfm-core",
 ]
 
 [[package]]
@@ -1041,7 +1028,6 @@ name = "easy-usfm-tauri"
 version = "0.1.0"
 dependencies = [
  "blake3",
- "easy-usfm-core",
  "libc",
  "notify",
  "serde",
@@ -1052,6 +1038,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tempfile",
  "tokio",
+ "usfm-core",
  "windows-sys 0.61.2",
 ]
 
@@ -1060,10 +1047,10 @@ name = "easy-usfm-wasm"
 version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
- "easy-usfm-core",
  "serde",
  "serde-wasm-bindgen",
  "serde_json",
+ "usfm-core",
  "wasm-bindgen",
  "wasm-bindgen-test",
 ]
@@ -4612,6 +4599,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "usfm-core"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "proptest",
+ "serde",
+ "serde_json",
+ "unicode-normalization",
+ "unicode-segmentation",
+ "usfm3",
+]
+
+[[package]]
 name = "usfm3"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5477,13 +5477,13 @@ dependencies = [
  "anyhow",
  "clap",
  "csv",
- "easy-usfm-core",
  "serde",
  "serde_json",
  "sha2",
  "toml 0.8.23",
  "unicode-normalization",
  "unicode-script",
+ "usfm-core",
  "usfm3",
  "walkdir",
 ]

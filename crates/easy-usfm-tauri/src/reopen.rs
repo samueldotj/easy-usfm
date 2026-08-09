@@ -98,8 +98,8 @@ mod tests {
     use crate::fs::RealFs;
     use crate::lock::{now_ms, take};
     use crate::recovery::{snapshot, Meta};
-    use easy_usfm_core::Eol;
     use std::path::PathBuf;
+    use usfm_core::Eol;
 
     fn meta(at: u64, dirty: bool) -> Meta {
         Meta {

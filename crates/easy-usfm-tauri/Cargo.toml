@@ -28,7 +28,7 @@ updater = []
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-easy-usfm-core = { path = "../easy-usfm-core" }
+usfm-core = { path = "../usfm-core" }
 blake3.workspace = true
 tauri = { version = "2", features = [] }
 serde.workspace = true
@@ -61,5 +61,5 @@ tempfile = "3"
 # The update gate is async, and its tests assert that nothing is sent without
 # consent -- which has to be awaited to be asserted.
 tokio = { version = "1", features = ["macros", "rt"] }
-easy-usfm-core = { path = "../easy-usfm-core" }
+usfm-core = { path = "../usfm-core" }
 blake3.workspace = true

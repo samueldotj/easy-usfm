@@ -285,11 +285,75 @@ mod tests {
         }
     }
 
+    /// Forces the build to stop when a variant is added.
+    ///
+    /// The count assertion this replaces could be satisfied by bumping the
+    /// number, so it caught a variant added *and* listed while missing the one
+    /// case that matters — added and **not** listed. An exhaustive match
+    /// cannot be satisfied that way: a new variant fails to compile here, and
+    /// whoever is looking at this function is one line from `ALL`.
+    ///
+    /// `usfm-core` has a second consumer now, and BibleCompose mirrors this
+    /// list to map codes through to its own diagnostics. A code missing from
+    /// `ALL` would reach a user as an unrecognised string rather than a
+    /// diagnostic, so completeness is load-bearing outside this crate too.
+    fn assert_exhaustive(code: DiagnosticCode) {
+        match code {
+            DiagnosticCode::UnknownMarker => {}
+            DiagnosticCode::DeprecatedMarker => {}
+            DiagnosticCode::UnclosedMarker => {}
+            DiagnosticCode::StrayCloseMarker => {}
+            DiagnosticCode::MisnestedMarker => {}
+            DiagnosticCode::MissingNestingPrefix => {}
+            DiagnosticCode::ImplicitClose => {}
+            DiagnosticCode::UnclosedNote => {}
+            DiagnosticCode::UnclosedAtEof => {}
+            DiagnosticCode::InvalidChapterSequence => {}
+            DiagnosticCode::InvalidVerseSequence => {}
+            DiagnosticCode::DuplicateChapter => {}
+            DiagnosticCode::DuplicateId => {}
+            DiagnosticCode::MissingIdMarker => {}
+            DiagnosticCode::InvalidBookCode => {}
+            DiagnosticCode::NoteSubmarkerOutsideNote => {}
+            DiagnosticCode::TextBeforeId => {}
+            DiagnosticCode::NonAsciiVerseDigits => {}
+            DiagnosticCode::HeaderAfterBody => {}
+            DiagnosticCode::MilestoneMismatch => {}
+            DiagnosticCode::MixedNormalization => {}
+            DiagnosticCode::JoinerInMarkerName => {}
+            DiagnosticCode::JoinerAtMarkerBoundary => {}
+            DiagnosticCode::InvalidAttributes => {}
+            DiagnosticCode::MissingChapterNumber => {}
+            DiagnosticCode::MissingVerseNumber => {}
+            DiagnosticCode::VerseOutsideParagraph => {}
+            DiagnosticCode::MissingChapterMarker => {}
+            DiagnosticCode::CharCrossesVerseBoundary => {}
+            DiagnosticCode::EmptyFigure => {}
+            DiagnosticCode::UnquotedAttributeValue => {}
+            DiagnosticCode::MissingRequiredAttribute => {}
+            DiagnosticCode::DefaultAttributeNotDefined => {}
+            DiagnosticCode::BodyParagraphBeforeChapter => {}
+            DiagnosticCode::NonEmptyBlankLine => {}
+            DiagnosticCode::LeadingZeros => {}
+            DiagnosticCode::EmptyWordMarker => {}
+            DiagnosticCode::MissingMilestoneSelfClose => {}
+            DiagnosticCode::InvalidTableColumnSequence => {}
+            DiagnosticCode::MarkerNewerThanDocument => {}
+            DiagnosticCode::LegacyFigureSyntax => {}
+            DiagnosticCode::DuplicateVerse => {}
+            DiagnosticCode::VerseGap => {}
+        }
+    }
+
     #[test]
     fn all_lists_every_variant() {
-        // A variant added without extending ALL would go unlisted in the
-        // suppression interface, so the count is asserted rather than trusted.
-        assert_eq!(DiagnosticCode::ALL.len(), 43);
+        for code in DiagnosticCode::ALL {
+            assert_exhaustive(*code);
+        }
+        // Both directions: the match above proves no variant is forgotten,
+        // this proves none is listed twice or invented.
+        let unique: HashSet<_> = DiagnosticCode::ALL.iter().collect();
+        assert_eq!(unique.len(), DiagnosticCode::ALL.len());
     }
 
     #[test]

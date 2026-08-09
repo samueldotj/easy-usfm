@@ -12,7 +12,7 @@ publish = false
 # is development tooling rather than a layer above the facade, so ADR-001's
 # containment is untouched -- and it is the only place the two may legitimately
 # be named together.
-easy-usfm-core = { path = "../crates/easy-usfm-core" }
+usfm-core = { path = "../crates/usfm-core" }
 usfm3.workspace = true
 
 anyhow = "1"

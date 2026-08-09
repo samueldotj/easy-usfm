@@ -4,7 +4,7 @@
 //! establish agreement with the ecosystem at scale. These are the small,
 //! readable cases that say what the facade is supposed to do at all.
 
-use easy_usfm_core::{Document, NodeKind, Severity};
+use usfm_core::{Document, NodeKind, Severity};
 
 const GENESIS: &str = "\\id GEN Genesis
 \\c 1

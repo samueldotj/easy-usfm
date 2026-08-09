@@ -2,7 +2,7 @@
 //!
 //! ADR-001 accepts a five-month-old crate with one maintainer at the centre of
 //! the product, and the first of its four risk controls is that nothing above
-//! `easy-usfm-core` knows the parser exists. A facade nobody checks erodes one
+//! `usfm-core` knows the parser exists. A facade nobody checks erodes one
 //! convenient `pub use` at a time — usually under deadline, usually reasonably
 //! — and by the time it matters the swap is no longer cheap.
 //!

@@ -1,7 +1,7 @@
 /**
  * The checksum that catches the engine's mirror drifting from the editor.
  *
- * The other half of `crates/easy-usfm-core/src/checksum.rs`. Both run FNV-1a
+ * The other half of `crates/usfm-core/src/checksum.rs`. Both run FNV-1a
  * over UTF-16 code units, which is the unit both languages already count in —
  * `charCodeAt` here, `encode_utf16` there — so the two agree by construction
  * rather than by translation.

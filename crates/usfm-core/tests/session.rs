@@ -9,7 +9,7 @@
 //! Agreement between chunked and whole-document parsing is asserted across the
 //! corpus by P0.5. What is here is the mechanics.
 
-use easy_usfm_core::{ByteSpan, Document, Edit, EditError, NodeKind, Session, Version};
+use usfm_core::{ByteSpan, Document, Edit, EditError, NodeKind, Session, Version};
 
 fn book(chapters: usize, verses_per_chapter: usize) -> String {
     let mut text = String::from("\\id GEN Genesis\n\\h Genesis\n");
@@ -317,7 +317,7 @@ fn a_chapter_chunk_does_not_report_the_missing_book_identification() {
     let missing_id = session
         .diagnostics()
         .iter()
-        .filter(|d| d.code == easy_usfm_core::DiagnosticCode::MissingIdMarker)
+        .filter(|d| d.code == usfm_core::DiagnosticCode::MissingIdMarker)
         .count();
 
     assert_eq!(missing_id, 0, "chapter chunks reported a missing \\id");
@@ -346,7 +346,7 @@ fn a_document_with_no_chapters_still_reports_them_missing() {
     let missing: Vec<_> = session
         .diagnostics()
         .into_iter()
-        .filter(|d| d.code == easy_usfm_core::DiagnosticCode::MissingChapterMarker)
+        .filter(|d| d.code == usfm_core::DiagnosticCode::MissingChapterMarker)
         .collect();
 
     assert_eq!(missing.len(), 1, "expected exactly one, got {missing:?}");
@@ -361,7 +361,7 @@ fn a_chapter_is_not_reported_missing_once_per_chapter() {
     let missing = session
         .diagnostics()
         .iter()
-        .filter(|d| d.code == easy_usfm_core::DiagnosticCode::MissingChapterMarker)
+        .filter(|d| d.code == usfm_core::DiagnosticCode::MissingChapterMarker)
         .count();
 
     assert_eq!(missing, 0);
@@ -442,7 +442,7 @@ fn overriding_the_version_shifts_severity_without_reparsing() {
         session
             .diagnostics()
             .iter()
-            .filter(|d| d.code == easy_usfm_core::DiagnosticCode::MarkerNewerThanDocument)
+            .filter(|d| d.code == usfm_core::DiagnosticCode::MarkerNewerThanDocument)
             .count()
     };
 
@@ -463,7 +463,7 @@ fn duplicate_chapters_are_caught_across_chunks() {
         session
             .diagnostics()
             .iter()
-            .any(|d| d.code == easy_usfm_core::DiagnosticCode::DuplicateChapter),
+            .any(|d| d.code == usfm_core::DiagnosticCode::DuplicateChapter),
         "a repeated chapter number went unreported"
     );
 }
@@ -664,7 +664,7 @@ fn chunked_reparse_beats_reparsing_the_whole_document() {
 // ------------------------------------------------------------ completion ---
 
 /// The context at the position `@` marks, which stands where the `\` is.
-fn context_at(marked: &str) -> easy_usfm_core::CompletionContext {
+fn context_at(marked: &str) -> usfm_core::CompletionContext {
     let at = marked.find('@').expect("mark the position with @");
     Session::new(marked.replace('@', "")).completion_context(at)
 }

@@ -1,0 +1,20 @@
+\id LUK Custom \z markers — authored for this repository
+\c 1
+\p
+\v 1 The \z namespace is the specification's own extension point, so a \z
+marker is not an error and must not be reported as one. It is also, by
+definition, a marker no table can describe.
+\zmyparagraph
+\v 2 A custom paragraph-level marker. Nothing knows what it means, and the
+text under it still has to survive.
+\v 3 A custom character marker wraps text and closes: \zcustom text inside\zcustom*
+\v 4 An attribute-bearing one: \zref |id="x-1" x-tool="translationCore"\*
+\p
+\v 5 Tool output is where these actually come from, and it is dense:
+\zaln-s |x-strong="G20620"\*\w and|x-occurrence="1"\w*\zaln-e\*
+\zaln-s |x-strong="G35880"\*\w the|x-occurrence="1"\w*\zaln-e\*
+\v 6 A custom marker whose name collides with the start of a real one —
+\zp is not \p — must not be folded into it.
+\v 7 Unclosed, at the end: \zcustom
+\p
+\v 8 The document continues.

@@ -13,7 +13,7 @@
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
-    let Ok(loaded) = easy_usfm_core::FileFidelity::capture(data) else {
+    let Ok(loaded) = usfm_core::FileFidelity::capture(data) else {
         // Refusing is a valid outcome; a lossy decode is not.
         return;
     };

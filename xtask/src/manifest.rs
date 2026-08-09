@@ -17,6 +17,15 @@ use serde::Deserialize;
 pub struct Entry {
     pub path: String,
     pub sha256: String,
+    /// `"vendored"` for a file fetched from a published translation, or
+    /// `"authored"` for one written for this repository.
+    ///
+    /// The distinction is a licence-audit one before it is anything else: a
+    /// vendored file must record where it came from and that its terms allow
+    /// redistribution, and an authored file has no upstream to record. Defaults
+    /// to vendored, so an entry that predates this field keeps its meaning.
+    #[serde(default = "vendored")]
+    pub origin: String,
     #[serde(default)]
     pub bytes: u64,
     #[serde(default)]
@@ -39,6 +48,10 @@ pub struct Entry {
     pub features: Vec<String>,
     #[serde(default)]
     pub traits: Vec<String>,
+}
+
+fn vendored() -> String {
+    "vendored".to_string()
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -66,6 +79,7 @@ pub fn render(entries: &[RenderEntry]) -> String {
         s.push_str("[[file]]\n");
         push_str_field(&mut s, "path", &e.path);
         push_str_field(&mut s, "sha256", &e.sha256);
+        push_str_field(&mut s, "origin", &e.origin);
         s.push_str(&format!("bytes = {}\n", e.bytes));
         push_str_field(&mut s, "translation", &e.translation);
         push_str_field(&mut s, "source", &e.source);
@@ -85,6 +99,7 @@ pub fn render(entries: &[RenderEntry]) -> String {
 pub struct RenderEntry {
     pub path: String,
     pub sha256: String,
+    pub origin: String,
     pub bytes: u64,
     pub translation: String,
     pub source: String,

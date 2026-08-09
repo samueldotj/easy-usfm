@@ -19,7 +19,7 @@
 
 use std::process::Command;
 
-use easy_usfm_core::grapheme;
+use usfm_core::grapheme;
 
 /// Text where Rust and ICU have historically been most likely to disagree:
 /// conjunct scripts, reordered vowel signs, emoji sequences with joiners, and
