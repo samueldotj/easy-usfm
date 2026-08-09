@@ -48,6 +48,10 @@
 }
 
 .cm-editor .cm-scroller {
+  /* Zoom. One variable for both panes, because they are the same document and
+     a translator comparing them needs them at the same size. Defaulted here so
+     the stylesheet stands alone if nothing has set it. */
+  font-size: calc(1rem * var(--zoom, 1));
   /* UNICODE §7 inverts the usual editor font choice. Monospace coverage is
      poor to nonexistent for many of the scripts this project exists to serve,
      and a monospace-first stack renders them as tofu or falls back

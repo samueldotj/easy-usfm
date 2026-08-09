@@ -286,6 +286,8 @@
     /* Scripture, so the content font and the document's leading (UNICODE §7). */
     font-family: var(--font-content);
     line-height: var(--line-height);
+    /* The same zoom the editor takes, from the same variable. */
+    font-size: calc(1rem * var(--zoom, 1));
   }
 
   .chapter {

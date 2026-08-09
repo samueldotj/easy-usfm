@@ -32,6 +32,7 @@
   import type { LaunchQueueHost } from "./lib/launch";
   import { isDesktop } from "./lib/shell";
   import { theme, type Theme } from "./lib/theme.svelte";
+  import { zoom } from "./lib/zoom.svelte";
 
   let editor: Editor | undefined = $state();
   let goto: GoToReference | undefined = $state();
@@ -135,6 +136,30 @@ ${href}`)) return;
   let caret = $state(0);
 
   const sync = new ScrollSync();
+
+  /**
+   * Ctrl and the wheel zooms rather than scrolls.
+   *
+   * Attached rather than declared as `onwheel`, because it has to be
+   * non-passive: `ctrlKey` with a wheel is also the browser's own page zoom,
+   * and only a prevented event stops that happening as well. Svelte's
+   * declarative handlers are passive for wheel, so `preventDefault` there is
+   * ignored.
+   *
+   * On the window, not on each pane -- zoom is a property of the document being
+   * read, not of whichever half the pointer happens to be over.
+   */
+  $effect(() => {
+    const onWheel = (event: WheelEvent) => zoom.wheel(event);
+    window.addEventListener("wheel", onWheel, { passive: false });
+    return () => window.removeEventListener("wheel", onWheel);
+  });
+
+  // The stored level, put where the stylesheet can see it. On mount rather than
+  // at import, because it touches the document.
+  $effect(() => {
+    zoom.apply();
+  });
 
   // Which pane the user is working in, which is what decides whether a scroll
   // event is an intent or an echo. After mount, because both panes have to
@@ -491,6 +516,18 @@ ${href}`)) return;
         case "previous-diagnostic":
           editor?.step(false);
           break;
+        case "zoom-in":
+          zoom.in();
+          break;
+
+        case "zoom-out":
+          zoom.out();
+          break;
+
+        case "zoom-reset":
+          zoom.reset();
+          break;
+
         case "marker-reference":
           void markerHelp?.open();
           break;
@@ -846,6 +883,23 @@ ${href}`)) return;
         event.preventDefault();
         void saved(() => (event.shiftKey ? doc.saveAs() : doc.save()));
         break;
+      // Zoom. Both spellings of the plus key: `+` is shifted on most layouts
+      // and `=` is the same physical key, so accepting only one makes the
+      // shortcut need a modifier nobody expects.
+      case "+":
+      case "=":
+        event.preventDefault();
+        zoom.in();
+        break;
+      case "-":
+        event.preventDefault();
+        zoom.out();
+        break;
+      case "0":
+        event.preventDefault();
+        zoom.reset();
+        break;
+
       case "p":
         // The panel first, not the printer. Every setting in it changes what
         // comes out, and the browser's own dialog cannot ask about any of them
@@ -1031,6 +1085,16 @@ ${href}`)) return;
          status-bar notice". Here rather than in a bar, because nothing is
          being asked and nothing was lost. -->
     {#if reloaded}<span class="note">{reloaded}</span>{/if}
+    <!-- Only when zoomed. A permanent "100%" is a number nobody reads, and its
+         absence is what makes the reading mean something when it appears. -->
+    {#if zoom.changed}
+      <button
+        type="button"
+        class="zoom"
+        title="Reset to actual size"
+        onclick={() => zoom.reset()}>{zoom.percent}%</button
+      >
+    {/if}
     {#if doc.limitations.length > 0}
       <!-- What this host cannot do, said plainly. An editor that appears to
            save and does not is the worst failure available to it, so the
@@ -1115,6 +1179,23 @@ ${href}`)) return;
   }
 
   .held button:hover {
+    border-color: var(--accent);
+  }
+
+  /* The zoom reading, which is also the way back to actual size. */
+  .zoom {
+    padding-block: 0;
+    padding-inline: 0.35rem;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-size: inherit;
+    cursor: pointer;
+  }
+
+  .zoom:hover {
     border-color: var(--accent);
   }
 
