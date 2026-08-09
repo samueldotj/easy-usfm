@@ -112,11 +112,7 @@ pub fn preview_snippet(text: &str) -> JsValue {
 /// session's UTF-16 mapper for offsets that cross to the editor, and a snippet
 /// has no editor to move a caret in. Its spans are never used, so it does not
 /// need one.
-fn to_wire_snippet(
-    source: &str,
-    node: &easy_usfm_core::Node,
-    cursor: &mut TextCursor,
-) -> WireNode {
+fn to_wire_snippet(source: &str, node: &easy_usfm_core::Node, cursor: &mut TextCursor) -> WireNode {
     if node.span.is_some() {
         if let Some(span) = &node.span {
             cursor.enter(span);
