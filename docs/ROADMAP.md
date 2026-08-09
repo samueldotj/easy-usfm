@@ -128,7 +128,7 @@ The design assumes the [`usfm3`](https://crates.io/crates/usfm3) crate as the pa
 
 | ID | | Deliverable | Done when |
 |---|---|---|---|
-| **P0.1** | S ⏳ | Corpus: ~200 vendored files, licence audit, fetch script for the extended set, verify harness | ~200 files vendored covering ≥ 12 scripts and every feature class; redistribution terms confirmed for each; `just corpus-fetch` retrieves the extended set; `just corpus-verify` re-hashes and passes |
+| **P0.1** | S ✅ | Corpus: ~200 vendored files, licence audit, fetch script for the extended set, verify harness | ~200 files vendored covering ≥ 12 scripts and every feature class; redistribution terms confirmed for each; `just corpus-fetch` retrieves the extended set; `just corpus-verify` re-hashes and passes. **Done** — 218 files, 12/12 scripts, 16/16 feature classes, 7/7 encoding traits, coverage enforced in CI. Six goals nothing published carries are authored fixtures in `corpus/pathological/`, marked `origin = "authored"` in the manifest ([corpus/README.md](../corpus/README.md)) |
 | **P0.2** | S | `usfm-core` skeleton; our `Node`, `Diagnostic`, `Span` types; `usfm3` pinned and wrapped | Facade compiles for host and wasm32; no `usfm3` type appears in the public API |
 | **P0.3** | M | `Utf16Mapper` and the `Char16` boundary type | Byte offsets cannot serialize (compile error if attempted); all four [UNICODE §9.1](UNICODE.md#91-offset-property-tests) properties green |
 | **P0.4** | **XL** | Chapter chunking and the incremental session | Single-chapter edit reparses one chunk; `\c` insert and delete split and merge correctly; reparse < 15 ms on a 2 MB file |

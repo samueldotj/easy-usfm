@@ -50,6 +50,7 @@ Inspect before committing:
 | Per-file scripts, features, traits | `just corpus-classify` | `cargo xtask corpus classify corpus/core` |
 | Redistributable sources available | `just corpus-list` | `cargo xtask corpus fetch --list` |
 | Self-test the tooling (no network) | `just corpus-test` | `cargo test --package xtask` |
+| Re-register the authored fixtures | — | `cargo xtask corpus authored` |
 
 Start with `--dry-run` if you want to see what would be downloaded before
 anything is:
@@ -127,28 +128,40 @@ The trait list is why the corpus cannot be all-Latin and all-tidy: several
 [FILE-FIDELITY](../docs/FILE-FIDELITY.md) guarantees are only tested by files
 that are genuinely messy.
 
-### Six goals nothing published covers
+### Six goals nothing published covers — settled
 
-`verify` currently runs with `--skip-coverage` in CI, and the reason is not
-that the gate is inconvenient. Across a pool of 2,730 files from 53 sources,
-six goals have no candidate at all:
+Across a pool of 2,730 files from 53 sources, six coverage goals had no
+candidate at all:
 
 | Missing | Why |
 |---|---|
-| `milestones`, `sidebars`, `custom_z` | Rare outside alignment-bearing texts. unfoldingWord's `\zaln-s` data is the obvious source, and is not yet listed. |
+| `milestones`, `sidebars`, `custom_z` | Rare outside alignment-bearing texts. |
 | `bom`, `crlf`, `mixed_eol` | **Published Scripture never carries them.** Distributors normalise line endings and strip byte-order marks before publishing. |
 
-The second row is the awkward one, because those three traits are exactly what
-[FILE-FIDELITY](../docs/FILE-FIDELITY.md) exists to protect. No amount of
-additional real translations will supply them — a wider net cannot catch what
-nobody publishes. They have to be synthesised: either re-encoded variants of
-files already committed here, or fixtures that live in `tests/pathological/`
-and are exercised separately, in which case the trait list belongs there rather
-than in this corpus's coverage requirements.
+The second row forced the decision. Those three traits are exactly what
+[FILE-FIDELITY](../docs/FILE-FIDELITY.md) exists to protect, and no quantity of
+additional translations will supply them — a wider net cannot catch what nobody
+publishes.
 
-That decision is open. Until it is made, coverage is measured and reported but
-not enforced, so the gap stays visible rather than being quietly deleted from
-the requirements.
+**They are authored, and they count.** `corpus/pathological/` holds fixtures
+written here; each is entered in the manifest with `origin = "authored"`, and
+its scripts, features and traits count toward coverage exactly as a vendored
+file's do. `verify` now enforces the full requirement, so **CI no longer passes
+`--skip-coverage`**.
+
+Two of the six needed no new file, only registering:
+`bom-crlf-no-final-newline.usfm` and `mixed-line-endings.usfm` already existed
+but were invisible to `verify`, which read the manifest and nothing else. The
+other three were written for the purpose — `milestones.usfm`, `sidebars.usfm`,
+`custom-z-markers.usfm`.
+
+The tension this creates is worth naming rather than hiding. *"Fixtures do not
+find parser bugs; published Scripture does"* is the first line of this file,
+and an authored file earns coverage credit it cannot fully deserve. They are a
+floor, not a substitute: a vendored file carrying real milestones is strictly
+better and should displace the fixture when one is found — unfoldingWord's
+`\zaln-s` data remains the obvious candidate and is still not listed. Until
+then a `\z` marker is exercised by something rather than by nothing.
 
 ## Layout
 
@@ -156,7 +169,8 @@ the requirements.
 corpus/
 ├── README.md          this file
 ├── manifest.toml      generated; one [[file]] per committed file
-├── core/              ~200 committed files
+├── core/              ~200 committed files, vendored
+├── pathological/      committed fixtures, authored here
 ├── extended/          fetched, gitignored
 └── .catalog.csv       cached eBible catalog, gitignored
 ```
@@ -169,6 +183,7 @@ Each entry records what the file is, where it came from, and why it is here:
 [[file]]
 path = "core/41MATengwebp.usfm"
 sha256 = "…"
+origin = "vendored"
 bytes = 187432
 translation = "engwebp"
 source = "https://ebible.org/Scriptures/engwebp_usfm.zip"
@@ -185,10 +200,26 @@ traits = ["lf"]
 `sha256` is the point of the file: it makes drift detectable. If a corpus file
 changes silently, every downstream test failure becomes ambiguous.
 
+`origin` says which rules apply. A `vendored` entry must record a `source` URL
+and be marked redistributable; an `authored` one must record no source, because
+there is no upstream to point at, and `verify` rejects an authored entry that
+claims one.
+
 ## Adding a file by hand
 
-Rare, but sometimes a construct is not represented in anything eBible
-distributes. Put it in `corpus/core/`, add a `[[file]]` entry with a real
-`source` and `copyright`, and run `cargo xtask corpus verify`. Hand-authored
-pathological cases belong in `tests/pathological/` instead — they are not
-published Scripture and should not claim to be.
+Sometimes a construct is not represented in anything eBible distributes.
+
+**A real file from somewhere else** goes in `corpus/core/` with a `[[file]]`
+entry carrying a real `source` and `copyright`, then `cargo xtask corpus
+verify`.
+
+**A file you wrote** goes in `corpus/pathological/`. Do not hand-write its
+manifest entry — run `cargo xtask corpus authored`, which rescans the directory
+and rewrites just those entries, leaving the 200 vendored ones untouched. It
+needs no network, so adding a fixture does not mean re-fetching the corpus.
+`corpus select` performs the same scan, so a full regeneration cannot silently
+drop them either.
+
+Keep authored files honest about what they are: they carry `origin =
+"authored"` and no `source`, so nothing can mistake one for published
+Scripture.

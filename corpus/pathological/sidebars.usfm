@@ -1,0 +1,30 @@
+\id JHN Sidebars — authored for this repository
+\c 1
+\p
+\v 1 A sidebar interrupts the body without belonging to it. Everything between
+\esb and \esbe is a separate flow, and a renderer that treats it as body text
+puts an essay in the middle of a verse.
+\esb \cat History\cat*
+\ms Weights and Measures
+\p A sidebar carries its own paragraph structure, and its own headings.
+\p It may also carry a category, which is what a publisher filters on when
+deciding which sidebars a given edition includes.
+\esbe
+\v 2 The body resumes here, and the verse that was interrupted must still read
+as one verse.
+\p
+\v 3 Sidebars nest nothing, but they do contain most things.
+\esb
+\p A sidebar with no category at all.
+\li1 Including lists,
+\li2 nested ones,
+\q1 poetry,
+\q2 and its indents.
+\esbe
+\v 4 A sidebar left unclosed at the end of a chapter is a diagnostic rather
+than a parse failure.
+\esb \cat Deuterocanon\cat*
+\p This one never closes.
+\c 2
+\p
+\v 1 And the next chapter begins anyway.

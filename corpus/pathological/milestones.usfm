@@ -1,0 +1,17 @@
+\id MRK Milestones — authored for this repository
+\c 1
+\p
+\v 1 Milestones carry no text of their own, which is exactly why they are easy
+to lose: a parser that drops them still produces the right words.
+\v 2 \qt-s |sid="qt_1" who="Jesus"\*He said to them, "Follow me."\qt-e |eid="qt_1"\*
+\v 3 A quotation milestone can span a verse boundary, so the start and end are
+matched by their identifiers rather than by nesting. \qt-s |sid="qt_2" who="Jesus"\*The first
+\v 4 half is here and the second half is in the next verse.\qt-e |eid="qt_2"\*
+\p
+\v 5 \ts-s\*A translator's section milestone takes no attributes at all and
+self-closes immediately. \ts-e\*
+\v 6 Word alignment writes the densest milestones in practice, one pair per
+word: \zaln-s |x-strong="G09090" x-lemma="λόγος" x-morph="Gr,N,,,,,NMS,"\*\w Word|x-occurrence="1"\w*\zaln-e\* was with God.
+\v 7 An unmatched start is a diagnostic, not a parse failure: \qt-s |sid="qt_3" who="Peter"\*
+\p
+\v 8 and the document continues past it.

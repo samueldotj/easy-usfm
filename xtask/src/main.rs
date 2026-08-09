@@ -115,6 +115,12 @@ enum CorpusCmd {
         #[arg(long)]
         manifest: Option<PathBuf>,
     },
+    /// Refresh the authored fixtures in the manifest, leaving vendored
+    /// entries untouched. Cheap: no network, no re-fetching 200 files.
+    Authored {
+        #[arg(long)]
+        manifest: Option<PathBuf>,
+    },
     /// Verify hashes, provenance, and coverage. Runs in CI.
     Verify {
         #[arg(long)]
@@ -175,6 +181,10 @@ fn main() -> Result<()> {
                     copy_to.as_deref(),
                     manifest.as_deref(),
                 )
+            }
+            CorpusCmd::Authored { manifest } => {
+                let path = manifest.unwrap_or_else(|| root.join("corpus").join("manifest.toml"));
+                corpus::refresh_authored(&path)
             }
             CorpusCmd::Verify {
                 corpus: dir,

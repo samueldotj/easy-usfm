@@ -23,15 +23,19 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
-      # Hashes, provenance, and the redistribution flag on all 200 files.
+      # Hashes, provenance, the redistribution flag, and full coverage across
+      # all 218 committed files.
       #
-      # Coverage is skipped, and the reason is not that it is inconvenient:
-      # six goals have no candidate in anything published. Three are feature
+      # Coverage used to be skipped, and not because the gate was inconvenient:
+      # six goals had no candidate in anything published. Three were feature
       # classes rare outside alignment-bearing texts -- milestones, sidebars,
-      # custom \z markers. Three are encoding traits -- BOM, CRLF, mixed line
-      # endings -- that published Scripture never carries, because
-      # distributors normalise them away. Those three are what FILE-FIDELITY
-      # exists to protect, so they need synthesised files rather than a wider
-      # net. See corpus/README.md; tracked as part of finishing P0.1.
-      - name: Verify hashes, provenance, and licence terms
-        run: cargo xtask corpus verify --skip-coverage
+      # custom \z markers. Three were encoding traits -- BOM, CRLF, mixed line
+      # endings -- that distributors normalise away before publishing, and
+      # those three are exactly what FILE-FIDELITY exists to protect, so a
+      # wider net was never going to supply them.
+      #
+      # They are authored fixtures now, in corpus/pathological/, carrying
+      # origin = "authored" in the manifest and counting toward coverage.
+      # See corpus/README.md.
+      - name: Verify hashes, provenance, licence terms, and coverage
+        run: cargo xtask corpus verify
