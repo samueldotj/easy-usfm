@@ -590,11 +590,56 @@
    */
 
   :global(.usfm-sidebar) {
-    border-inline-start: 3px solid var(--border);
-    padding-inline-start: 0.9rem;
     margin-block: 0.9rem;
-    background: color-mix(in srgb, var(--surface-sunken) 60%, transparent);
-    padding-block: 0.5rem;
+    padding-block: 0.6rem 0.7rem;
+    padding-inline: 0.9rem;
+    background: var(--surface-sunken);
+    border: 1px solid var(--acc);
+    border-radius: var(--radius);
+    /* A sidebar is editorial apparatus rather than Scripture, so it is set in
+       the interface face at interface size. Reading it in the same serif at
+       the same measure as the text it sits beside is what makes a study Bible
+       hard to skim -- the eye needs to know at a glance which is which. */
+    font-family: var(--font-ui);
+    font-size: 0.85em;
+    line-height: 1.5;
+    color: var(--text-muted);
+  }
+
+  /* The `\esb` label, so the reader can see what produced the box. Generated
+     content rather than markup, because the renderer must not invent nodes the
+     document does not contain. */
+  :global(.usfm-sidebar)::before {
+    /* Doubled: a single backslash starts a hex escape in a CSS string, so
+       `"\esb"` is U+000E followed by "sb" rather than the marker. */
+    content: "\\esb";
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.75em;
+    letter-spacing: 0.04em;
+    color: var(--acc-text);
+    margin-block-end: 0.2rem;
+  }
+
+  /* Its category and heading, which are the two parts a reader scans for. */
+  :global(.usfm-sidebar .usfm-cat) {
+    display: block;
+    font-size: 0.8em;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--acc-text);
+  }
+
+  :global(.usfm-sidebar .usfm-ms),
+  :global(.usfm-sidebar .usfm-ms1) {
+    font-size: 1.05em;
+    font-weight: 600;
+    color: var(--text);
+    margin-block: 0.1rem 0.25rem;
+  }
+
+  :global(.usfm-sidebar .usfm-para) {
+    margin-block-end: 0.35rem;
   }
 
   /* ---------------------------------------------------------- figure ---

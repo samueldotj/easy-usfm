@@ -293,6 +293,105 @@ function numbered(marker: string, number: number | undefined): string {
 }
 
 /**
+ * The command that writes a given marker, where there is one.
+ *
+ * The marker strip and the palette's `\` mode both let a marker be picked by
+ * name, and for a dozen of them there is already a command that knows how to
+ * write it properly — with its number suggested, its pair closed, its block
+ * laid out. Routing through the command is what stops `\c` inserted from the
+ * strip behaving differently from `\c` inserted from the toolbar.
+ */
+const BY_MARKER: Record<string, string> = {
+  c: "insert-chapter",
+  v: "insert-verse",
+  p: "insert-paragraph",
+  s1: "insert-section",
+  s: "insert-section",
+  r: "insert-parallel",
+  q1: "insert-poetry",
+  b: "insert-break",
+  f: "insert-footnote",
+  x: "insert-xref",
+  esb: "insert-sidebar",
+  tr: "insert-table",
+  fig: "insert-figure",
+  bd: "insert-bold",
+  it: "insert-italic",
+};
+
+export function commandForMarker(marker: string): string | null {
+  return BY_MARKER[marker] ?? null;
+}
+
+/** What the marker table says a marker is. */
+export type MarkerClass = "character" | "paragraph" | "note" | "milestone" | "unclassified";
+
+const CLASSES: readonly string[] = [
+  "character",
+  "paragraph",
+  "note",
+  "milestone",
+  "unclassified",
+];
+
+/**
+ * The marker table's `class`, narrowed.
+ *
+ * It arrives from the engine as a string, because the wire format is data and
+ * not a type. A class this side does not recognise becomes "unclassified",
+ * which is the honest answer and the one whose insertion shape is safest.
+ */
+export function markerClass(value: string | undefined): MarkerClass {
+  return CLASSES.includes(value ?? "") ? (value as MarkerClass) : "unclassified";
+}
+
+/**
+ * An insertion for any marker at all, from what class it is.
+ *
+ * The fallback behind {@link commandForMarker}: USFM has several hundred
+ * markers and this application will never have a hand-written command for each
+ * one. What it can do is get the *shape* right, which is the part that decides
+ * whether the file still parses — a character marker wraps and closes, a
+ * paragraph marker takes a line of its own, a milestone is self-closing.
+ */
+export function insertionForMarker(
+  marker: string,
+  kind: MarkerClass,
+  where: Where,
+): Insertion {
+  const known = commandForMarker(marker);
+  if (known) {
+    const insertion = insertionFor(known, where);
+    if (insertion) return insertion;
+  }
+
+  const selected = where.text.slice(where.from, where.to);
+
+  if (kind === "character") return wrap(marker, selected);
+
+  if (kind === "note") {
+    // A caller, because a note without one is a diagnostic. `+` is USFM for
+    // "number it for me", which is what every published edition uses.
+    const open = `\\${marker} + `;
+    const close = `\\${marker}*`;
+    return { text: `${open}${selected}${close}`, caret: open.length, select: selected.length };
+  }
+
+  if (kind === "milestone") {
+    // Self-closing, and it marks a position rather than containing anything --
+    // so the selection is left alone and the marker goes in front of it.
+    const text = `\\${marker}\\*`;
+    return { text: `${text}${selected}`, caret: text.length, select: selected.length };
+  }
+
+  // Paragraph, and anything unclassified: a line of its own is the safe shape,
+  // because a paragraph marker halfway through a line is read as exactly that.
+  const lead = atLineStart(where.text, where.from) ? "" : "\n";
+  const text = `${lead}\\${marker} `;
+  return { text: `${text}${selected}`, caret: text.length, select: selected.length };
+}
+
+/**
  * A note around the selection — a footnote or a cross-reference.
  *
  * The caller is `+`, which is USFM for "number it for me". A translator
@@ -331,7 +430,7 @@ function note(
  * back-reference. A reference with no colon is a chapter the caret is in with
  * no verse yet, which is not somewhere a note's reference can point.
  */
-function chapterVerse(reference: string | undefined): string | null {
+export function chapterVerse(reference: string | undefined): string | null {
   if (!reference) return null;
   const last = reference.trim().split(/\s+/).at(-1) ?? "";
   return last.includes(":") ? last : null;

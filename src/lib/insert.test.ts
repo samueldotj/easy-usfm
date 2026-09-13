@@ -9,7 +9,13 @@
 
 import { describe, expect, it } from "vitest";
 
-import { COMMANDS, insertionFor, type Where } from "./insert";
+import {
+  COMMANDS,
+  commandForMarker,
+  insertionFor,
+  insertionForMarker,
+  type Where,
+} from "./insert";
 
 /** A caret at the end of `text`, unless a range is given. */
 function at(text: string, from = text.length, to = from): Where {
@@ -159,6 +165,52 @@ describe("the sidebar block", () => {
 
   it("opens a line first when the caret is mid-line", () => {
     expect(insertionFor("insert-sidebar", at("\\v 1 text"))?.text.startsWith("\n")).toBe(true);
+  });
+});
+
+describe("inserting a marker by name", () => {
+  it("routes through the command when there is one", () => {
+    // So `\c` from the marker strip behaves exactly like Chapter from the
+    // toolbar -- number suggested, own line, caret below it.
+    expect(commandForMarker("c")).toBe("insert-chapter");
+    expect(insertionForMarker("c", "paragraph", { ...at(""), nextChapter: 4 }).text).toBe("\\c 4\n");
+  });
+
+  it("wraps and closes a character marker", () => {
+    expect(insertionForMarker("nd", "character", at("LORD", 0, 4)).text).toBe("\\nd LORD\\nd*");
+  });
+
+  it("gives a note a caller", () => {
+    // A note with no caller is a diagnostic produced by the editor itself.
+    expect(insertionForMarker("ef", "note", at("")).text).toBe("\\ef + \\ef*");
+  });
+
+  it("closes a milestone on itself and leaves the selection alone", () => {
+    const insertion = insertionForMarker("qt-s", "milestone", at("words", 0, 5));
+    expect(insertion.text).toBe("\\qt-s\\*words");
+  });
+
+  it("puts an unknown paragraph marker on a line of its own", () => {
+    expect(insertionForMarker("pmo", "paragraph", at("\\v 1 text")).text).toBe("\n\\pmo ");
+    expect(insertionForMarker("pmo", "paragraph", at("")).text).toBe("\\pmo ");
+  });
+
+  it("treats a marker it cannot classify as a paragraph", () => {
+    // The safe shape: a paragraph marker halfway through a line parses as
+    // exactly that, and a private extension is far more likely to be one.
+    expect(insertionForMarker("zx", "unclassified", at("")).text).toBe("\\zx ");
+  });
+
+  it("has no command for a marker nobody wrote one for", () => {
+    expect(commandForMarker("nd")).toBeNull();
+  });
+
+  it("maps every marker it claims onto a command that exists", () => {
+    for (const marker of ["c", "v", "p", "s1", "r", "q1", "b", "f", "x", "esb", "tr", "fig", "bd", "it"]) {
+      const id = commandForMarker(marker);
+      expect(id, marker).not.toBeNull();
+      expect(COMMANDS.some((command) => command.id === id), marker).toBe(true);
+    }
   });
 });
 

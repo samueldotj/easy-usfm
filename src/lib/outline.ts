@@ -102,6 +102,16 @@ export interface Section {
 const HEADING = /^(m?s)([1-9])?$/;
 
 /**
+ * Nodes whose insides are not the chapter's own text.
+ *
+ * A sidebar and a note both contain headings, verses and paragraphs that
+ * belong to the apparatus rather than to the Scripture around them. Counting
+ * them puts a study note's heading in the table of contents and a quoted verse
+ * in the verse count.
+ */
+const APPARATUS = new Set(["sidebar", "note"]);
+
+/**
  * The sections of one chapter, in document order.
  *
  * The verse range is accumulated as the walk goes: a section owns every verse
@@ -115,6 +125,12 @@ export function outlineOf(nodes: readonly PreviewNode[]): Section[] {
 
   const walk = (list: readonly PreviewNode[]): void => {
     for (const node of list) {
+      // A study sidebar has its own `\ms` heading and can quote its own
+      // verses, and neither belongs to the chapter: the outline is the table
+      // of contents of the Scripture, and a sidebar is apparatus beside it.
+      // Its heading has a panel of its own.
+      if (APPARATUS.has(node.kind)) continue;
+
       if (node.kind === "verse") {
         const number = node.attributes.find((entry) => entry.key === "number")?.value;
         if (number !== undefined && current) {
@@ -148,6 +164,28 @@ export function outlineOf(nodes: readonly PreviewNode[]): Section[] {
   // A heading with no verses under it is still a heading -- an empty section
   // someone is about to fill in -- so nothing is dropped here.
   return sections;
+}
+
+/**
+ * How many verses a chapter has.
+ *
+ * Skips the apparatus for the same reason the outline does: a verse quoted
+ * inside a study sidebar is not a verse of the chapter, and counting it makes
+ * the navigator's footer disagree with the file.
+ */
+export function verseCountOf(nodes: readonly PreviewNode[]): number {
+  let found = 0;
+
+  const walk = (list: readonly PreviewNode[]): void => {
+    for (const node of list) {
+      if (APPARATUS.has(node.kind)) continue;
+      if (node.kind === "verse") found += 1;
+      else walk(node.children);
+    }
+  };
+
+  walk(nodes);
+  return found;
 }
 
 /** A section's verses, as the label the navigator shows. */

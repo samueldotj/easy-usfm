@@ -272,6 +272,59 @@
     view.scrollDOM.scrollTop += delta;
   }
 
+  /**
+   * Which line an offset is on, 1-based.
+   *
+   * Asked of CodeMirror rather than counted here: it keeps a line index and
+   * answers in logarithmic time, where counting newlines in a two-megabyte
+   * string is a megabyte of scanning to learn one number — and the sidebar
+   * panel wants it whenever the caret moves.
+   */
+  export function lineAt(offset: number): number {
+    if (!view) return 1;
+    return view.state.doc.lineAt(Math.max(0, Math.min(offset, view.state.doc.length))).number;
+  }
+
+  /**
+   * The caret's line and column, both 1-based, for the status bar.
+   *
+   * The column is counted in UTF-16 units from the start of the line, which is
+   * what every editor's status bar means by "Col" and what CodeMirror's own
+   * offsets are in. It is not a count of characters a reader would recognise —
+   * in a script with combining marks those are different numbers — and the
+   * honest thing is that this is a position in the file, which is what someone
+   * comparing against a diff or a diagnostic needs it to be.
+   */
+  export function position(): { line: number; column: number } | null {
+    if (!view) return null;
+    const at = view.state.selection.main.head;
+    const line = view.state.doc.lineAt(at);
+    return { line: line.number, column: at - line.from + 1 };
+  }
+
+  /**
+   * Where a document offset is on screen, relative to the editor's own box.
+   *
+   * For the floating note inspector, which has to sit beside the line it
+   * describes rather than in a corner. Relative rather than absolute, because
+   * the card is positioned inside the editor pane and the pane moves when the
+   * layout changes.
+   *
+   * `null` when the position is scrolled out of view — CodeMirror does not
+   * render what is off screen, so there are no coordinates to give, and a card
+   * pinned to a guess would sit over the wrong line.
+   */
+  export function offsetRect(at: number): { x: number; y: number; bottom: number } | null {
+    if (!view) return null;
+
+    const clamped = Math.max(0, Math.min(at, view.state.doc.length));
+    const coords = view.coordsAtPos(clamped);
+    if (!coords) return null;
+
+    const box = view.scrollDOM.getBoundingClientRect();
+    return { x: coords.left - box.left, y: coords.top - box.top, bottom: coords.bottom - box.top };
+  }
+
   /** What is selected, for a command that wraps or replaces it. */
   export function selection(): { text: string; from: number; to: number } | null {
     if (!view) return null;

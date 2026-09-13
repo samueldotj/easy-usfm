@@ -8,7 +8,15 @@
 
 import { describe, expect, it } from "vitest";
 
-import { chapterAt, chaptersOf, outlineOf, sectionAt, textOf, verseRange } from "./outline";
+import {
+  chapterAt,
+  chaptersOf,
+  outlineOf,
+  sectionAt,
+  textOf,
+  verseCountOf,
+  verseRange,
+} from "./outline";
 import type { Chunk, Diagnostic, PreviewNode } from "../worker/protocol";
 
 function chunk(number: number | null, start: number, end: number): Chunk {
@@ -154,8 +162,51 @@ describe("the outline", () => {
     expect(sectionAt(sections, 500)).toBe(1);
   });
 
+  it("leaves a study sidebar's heading out of it", () => {
+    // `\esb` carries its own `\ms`, and it is apparatus rather than a section
+    // of the chapter -- putting it in the outline says the Scripture has a
+    // heading where it has a note beside it. The sidebar panel shows it.
+    const withSidebar = outlineOf([
+      heading("s1", "The Beginning", 0),
+      para(verse("1"), text("In the beginning")),
+      node({
+        kind: "sidebar",
+        marker: "esb",
+        children: [heading("ms", "The Word (Logos)", 50), para(verse("40"), text("quoted"))],
+      }),
+      heading("s1", "The Witness of John", 100),
+      para(verse("6"), text("There came a man")),
+    ]);
+
+    expect(withSidebar.map((section) => section.title)).toEqual([
+      "The Beginning",
+      "The Witness of John",
+    ]);
+    // And the verse the sidebar quoted did not extend the section above it.
+    expect(verseRange(withSidebar[0]!)).toBe("1");
+  });
+
   it("is empty for a chapter that has not rendered yet", () => {
     expect(outlineOf([])).toEqual([]);
+  });
+});
+
+describe("counting verses", () => {
+  it("counts the chapter's own", () => {
+    expect(verseCountOf([para(verse("1"), text("a"), verse("2"), text("b"))])).toBe(2);
+  });
+
+  it("does not count one quoted inside a sidebar or a note", () => {
+    const nodes = [
+      para(verse("1"), text("a")),
+      node({ kind: "sidebar", marker: "esb", children: [para(verse("40"), text("quoted"))] }),
+      node({ kind: "note", marker: "f", children: [para(verse("41"), text("quoted"))] }),
+    ];
+    expect(verseCountOf(nodes)).toBe(1);
+  });
+
+  it("is zero for a chapter that has not rendered yet", () => {
+    expect(verseCountOf([])).toBe(0);
   });
 });
 

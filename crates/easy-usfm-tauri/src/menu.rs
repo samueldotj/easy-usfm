@@ -110,6 +110,18 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, recent: &[String]) -> tauri::Result
         .item(&MenuItemBuilder::with_id("insert-paragraph", "&Paragraph").build(app)?)
         .item(&MenuItemBuilder::with_id("insert-break", "Blan&k Line").build(app)?)
         .item(&MenuItemBuilder::with_id("insert-poetry", "Poetr&y Line").build(app)?)
+        .item(&MenuItemBuilder::with_id("insert-section", "Section &Heading").build(app)?)
+        .item(&MenuItemBuilder::with_id("insert-parallel", "Pa&rallel References").build(app)?)
+        .separator()
+        // The apparatus. A footnote takes the shortcut because it is the one
+        // of the three a translator writes dozens of in a sitting.
+        .item(
+            &MenuItemBuilder::with_id("insert-footnote", "&Footnote")
+                .accelerator("CmdOrCtrl+Shift+F")
+                .build(app)?,
+        )
+        .item(&MenuItemBuilder::with_id("insert-xref", "Cross &Reference").build(app)?)
+        .item(&MenuItemBuilder::with_id("insert-sidebar", "Study Side&bar").build(app)?)
         .separator()
         .item(&MenuItemBuilder::with_id("insert-table", "&Table").build(app)?)
         .item(&MenuItemBuilder::with_id("insert-figure", "I&mage").build(app)?)
@@ -196,7 +208,32 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, recent: &[String]) -> tauri::Result
         )
         .build()?;
 
+    // Layout. The window has two arrangements and three pane combinations, and
+    // all of it is remembered -- so these are the menu's way of saying that the
+    // choice exists, for someone who will never find the segmented control.
+    let arrangement = SubmenuBuilder::new(app, "&Layout")
+        .item(&MenuItemBuilder::with_id("shell-workbench", "&Workbench").build(app)?)
+        .item(&MenuItemBuilder::with_id("shell-study", "&Study").build(app)?)
+        .separator()
+        .item(&MenuItemBuilder::with_id("panes-editor", "&Editor Only").build(app)?)
+        .item(&MenuItemBuilder::with_id("panes-split", "S&plit").build(app)?)
+        .item(&MenuItemBuilder::with_id("panes-preview", "Pre&view Only").build(app)?)
+        .separator()
+        .item(&MenuItemBuilder::with_id("toggle-sync", "S&ync Scroll").build(app)?)
+        .item(&MenuItemBuilder::with_id("toggle-navigator", "&Navigator").build(app)?)
+        .build()?;
+
     let view = SubmenuBuilder::new(app, "&View")
+        // The palette reaches every command in this menu and several that are
+        // not in it, so it goes at the top where a menu bar puts its own
+        // search on every platform that has one.
+        .item(
+            &MenuItemBuilder::with_id("palette", "Command &Palette…")
+                .accelerator("CmdOrCtrl+K")
+                .build(app)?,
+        )
+        .item(&arrangement)
+        .separator()
         .item(&MenuItemBuilder::with_id("theme:light", "&Light Theme").build(app)?)
         .item(&MenuItemBuilder::with_id("theme:dark", "&Dark Theme").build(app)?)
         .item(&MenuItemBuilder::with_id("theme:system", "&System Theme").build(app)?)

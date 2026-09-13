@@ -1,31 +1,48 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
 
+  import AppBar from "./components/AppBar.svelte";
+  import CommandPalette from "./components/CommandPalette.svelte";
   import DiagnosticsPanel from "./components/DiagnosticsPanel.svelte";
+  import DocumentBar from "./components/DocumentBar.svelte";
   import Editor from "./components/Editor.svelte";
   import ExternalChange from "./components/ExternalChange.svelte";
   import FindBar from "./components/FindBar.svelte";
+  import FloatingNote from "./components/FloatingNote.svelte";
   import FontNotice from "./components/FontNotice.svelte";
   import GoToReference from "./components/GoToReference.svelte";
+  import Inspector from "./components/Inspector.svelte";
   import InsertToolbar from "./components/InsertToolbar.svelte";
   import MarkerHelp from "./components/MarkerHelp.svelte";
+  import MarkerStrip from "./components/MarkerStrip.svelte";
+  import Navigator from "./components/Navigator.svelte";
   import Preview from "./components/preview/Preview.svelte";
   import PrintSettings from "./components/PrintSettings.svelte";
   import RecoveryPrompt from "./components/RecoveryPrompt.svelte";
   import SplitPane from "./components/SplitPane.svelte";
-  import Toolbar from "./components/Toolbar.svelte";
+  import StatusBar from "./components/StatusBar.svelte";
   import UpdateBar from "./components/UpdateBar.svelte";
   import UpdatePrompt from "./components/UpdatePrompt.svelte";
-  import VersionPicker from "./components/VersionPicker.svelte";
   import { doc } from "./lib/document.svelte";
   import type { FileChanged } from "./lib/documentService";
   import { engine } from "./lib/engine.svelte";
   import { fonts } from "./lib/fonts.svelte";
   import { figures } from "./lib/figures.svelte";
-  import { insertionFor } from "./lib/insert";
+  import {
+    chapterVerse,
+    insertionFor,
+    insertionForMarker,
+    markerClass,
+  } from "./lib/insert";
   import { hasInvisibles } from "./lib/invisibles";
+  import { layout } from "./lib/layout.svelte";
+  import { markerAt } from "./lib/markerAt";
+  import { markerTable } from "./lib/markerTable.svelte";
+  import { convert, noteAt, notesIn, type NoteEntry } from "./lib/notes";
+  import { chapterAt, chaptersOf, outlineOf, sectionAt, verseCountOf } from "./lib/outline";
   import { print } from "./lib/print.svelte";
   import { pwa } from "./lib/pwa.svelte";
+  import { sidebarsIn } from "./lib/sidebars";
   import { updates } from "./lib/updates.svelte";
   import { ScrollSync, elementFor, scrollTo, topmostOffset, type Pane } from "./lib/scrollsync";
   import { SnapshotSchedule } from "./lib/snapshots";
@@ -41,6 +58,7 @@
   let printSettings: PrintSettings | undefined = $state();
   let recoveryPrompt: RecoveryPrompt | undefined = $state();
   let markerHelp: MarkerHelp | undefined = $state();
+  let palette: CommandPalette | undefined = $state();
 
   /**
    * A change to the file made outside this window (FILE-FIDELITY 3, P4.4).
@@ -52,7 +70,6 @@
   /** What the status bar says after a silent reload, briefly. */
   let reloaded = $state<string | null>(null);
   let error = $state<string | null>(null);
-  let panelOpen = $state(true);
   /**
    * Show zero-width characters (UNICODE appendix).
    *
@@ -83,7 +100,6 @@
     return null;
   }
 
-  const lines = $derived(doc.text.split("\n").length);
   /**
    * Opens a link that came out of a document, outside the application.
    *
@@ -134,6 +150,84 @@ ${href}`)) return;
 
   /** Where the caret is, recorded so a recovery can put it back. */
   let caret = $state(0);
+  /** Line and column, which only the editor can answer. */
+  let position = $state<{ line: number; column: number } | null>(null);
+
+  /**
+   * Everything the navigator and the inspector show, derived from the parse.
+   *
+   * None of it is stored and none of it is pushed: the chapter grid, the
+   * outline, the notes and the sidebars are all views of what the engine has
+   * already said, so a chapter typed into existence appears in the grid
+   * without anything being told to refresh.
+   *
+   * Scoped to the chapter the caret is in, which is what keeps the cost flat.
+   * A book is two megabytes; a chapter is a few thousand characters, and every
+   * scan below is over that.
+   */
+  const chapters = $derived(chaptersOf(engine.chunks, engine.diagnostics));
+  const activeChapter = $derived(chapterAt(chapters, caret));
+  const chapterNodes = $derived(engine.previews[activeChapter] ?? []);
+  const sections = $derived(outlineOf(chapterNodes));
+  const activeSection = $derived(sectionAt(sections, caret));
+
+  /** How many verses the current chapter has, for the navigator's footer. */
+  const verseCount = $derived(verseCountOf(chapterNodes));
+
+  const notes = $derived(notesIn(chapterNodes));
+  /**
+   * Which note the inspector shows.
+   *
+   * The one the caret is in, and otherwise the last one it was in — so moving
+   * out of a footnote to look at something does not blank the panel that was
+   * being read. Reset when the chapter changes, which is a different set.
+   */
+  let noteChoice = $state(0);
+  const noteHere = $derived(noteAt(notes, caret));
+  const activeNote = $derived(
+    noteHere >= 0 ? noteHere : Math.min(noteChoice, Math.max(0, notes.length - 1)),
+  );
+
+  /** The chapter's own text, and the sidebars in it. */
+  const chapterSpan = $derived(engine.chunks[activeChapter]);
+  const sidebars = $derived.by(() => {
+    const span = chapterSpan;
+    if (!span) return [];
+    // `lineAt` rather than counting newlines: CodeMirror keeps a line index
+    // and answers in logarithmic time, where counting them here would scan
+    // every byte before the chapter on every keystroke.
+    const firstLine = editor?.lineAt(span.start) ?? 1;
+    return sidebarsIn(doc.text.slice(span.start, span.end), span.start, firstLine);
+  });
+
+  /** The marker the caret is inside, for the inspector's third tab. */
+  const markerHere = $derived(markerAt(doc.text, caret));
+
+  /** What the Study breadcrumb says. */
+  const chapterLabel = $derived(
+    chapters[activeChapter]?.number === null || chapters[activeChapter] === undefined
+      ? null
+      : String(chapters[activeChapter]?.number),
+  );
+  const sectionLabel = $derived(sections[activeSection]?.title ?? null);
+
+  /**
+   * Where the floating note card goes, in Study.
+   *
+   * Recomputed when the caret moves and when the editor scrolls, because both
+   * change where the line is on screen. `null` while the note is off screen —
+   * CodeMirror does not render what is not visible, so there are no
+   * coordinates, and a card pinned to a guess sits over the wrong line.
+   */
+  let noteRect = $state<{ x: number; y: number; bottom: number } | null>(null);
+  /** Escape closes it until the caret next lands in a note. */
+  let noteDismissed = $state(false);
+
+  function placeNote(): void {
+    const note = notes[activeNote];
+    const at = noteHere >= 0 && note?.start !== null && note?.start !== undefined ? note.start : null;
+    noteRect = at === null ? null : (editor?.offsetRect(at) ?? null);
+  }
 
   const sync = new ScrollSync();
 
@@ -368,8 +462,6 @@ ${href}`)) return;
   }
 
   const counts = $derived(engine.counts);
-  /** The host's limitations, as one tooltip. Blank-line separated to read. */
-  const limitations = $derived(doc.limitations.join("\n\n"));
 
   /**
    * Images go back off whenever the document changes (SECURITY 3).
@@ -439,6 +531,142 @@ ${href}`)) return;
   });
 
   /**
+   * Every command, by the identifier the native menu emits.
+   *
+   * Four things ask for a command now — the native menu, the browser build's
+   * menu bar, the toolbar and the command palette — and all four send an id
+   * here. That is what stops the palette from becoming a second
+   * implementation of Save: there is one switch, and a route that cannot name
+   * an id in it does nothing rather than doing something slightly different.
+   */
+  async function command(id: string): Promise<void> {
+    if (id.startsWith("recent:")) {
+      const path = id.slice("recent:".length);
+      if (path === "clear") doc.clearRecent();
+      else if (path !== "none") await load(() => doc.open(path));
+      return;
+    }
+    if (id.startsWith("theme:")) {
+      theme.set(id.slice("theme:".length) as Theme);
+      return;
+    }
+
+    // Every insert command, by the id the toolbar uses. Handled before the
+    // switch so adding one to `COMMANDS` adds it to the menu path too.
+    if (id.startsWith("insert-")) {
+      insert(id);
+      return;
+    }
+
+    switch (id) {
+      case "new":
+        await load(() => doc.createNew());
+        break;
+      case "open":
+        await load(() => doc.open());
+        break;
+      case "save":
+        await saved(() => doc.save());
+        break;
+      case "save-as":
+        await saved(() => doc.saveAs());
+        break;
+      case "focus-preview":
+        focusPane("Preview");
+        break;
+
+      case "cycle-pane":
+        cyclePanes(true);
+        break;
+
+      // Chooses, rather than cycling. PRODUCT 6.4 gives Ctrl+1 and Ctrl+2 as
+      // "focus editor / preview" and F6 separately as "cycle pane focus";
+      // this item was cycling, so the two shortcuts did the same thing and
+      // neither did what the table says.
+      case "focus-editor":
+        editor?.focus();
+        break;
+      case "print":
+        printSettings?.open();
+        break;
+      case "toggle-images":
+        figures.toggle(!figures.shown);
+        break;
+
+      case "toggle-invisibles":
+        showInvisibles = !showInvisibles;
+        break;
+      case "toggle-diagnostics":
+        layout.toggleDiagnostics();
+        break;
+      case "next-diagnostic":
+        editor?.step(true);
+        break;
+      case "previous-diagnostic":
+        editor?.step(false);
+        break;
+      case "zoom-in":
+        zoom.in();
+        break;
+
+      case "zoom-out":
+        zoom.out();
+        break;
+
+      case "zoom-reset":
+        zoom.reset();
+        break;
+
+      case "marker-reference":
+        void markerHelp?.open();
+        break;
+
+      case "go-to-reference":
+        goto?.open();
+        break;
+      case "find":
+        find?.show(false);
+        break;
+      case "replace":
+        find?.show(true);
+        break;
+      case "find-next":
+        find?.step(true);
+        break;
+      case "find-previous":
+        find?.step(false);
+        break;
+
+      // The redesign's own commands. Layout is a working habit rather than a
+      // property of the document, so all of it is remembered (`layout`).
+      case "palette":
+        palette?.open();
+        break;
+      case "shell-workbench":
+        layout.setShell("workbench");
+        break;
+      case "shell-study":
+        layout.setShell("study");
+        break;
+      case "panes-editor":
+        layout.setPanes("editor");
+        break;
+      case "panes-split":
+        layout.setPanes("split");
+        break;
+      case "panes-preview":
+        layout.setPanes("preview");
+        break;
+      case "toggle-sync":
+        layout.toggleSync();
+        break;
+      case "toggle-navigator":
+        layout.toggleNavigator();
+        break;
+    }
+  }
+
+  /**
    * The native menu bar is another way to ask for the same commands.
    *
    * One listener with the item's id as the payload, so adding an item to the
@@ -447,108 +675,7 @@ ${href}`)) return;
    */
   async function listenToMenu(): Promise<void> {
     const { listen } = await import("@tauri-apps/api/event");
-
-    await listen<string>("menu", async (event) => {
-      const id = event.payload;
-
-      if (id.startsWith("recent:")) {
-        const path = id.slice("recent:".length);
-        if (path === "clear") doc.clearRecent();
-        else if (path !== "none") await load(() => doc.open(path));
-        return;
-      }
-      if (id.startsWith("theme:")) {
-        theme.set(id.slice("theme:".length) as Theme);
-        return;
-      }
-
-      // Every insert command, by the id the toolbar uses. Handled before the
-      // switch so adding one to `COMMANDS` adds it to the menu path too.
-      if (id.startsWith("insert-")) {
-        insert(id);
-        return;
-      }
-
-      switch (id) {
-        case "new":
-          await load(() => doc.createNew());
-          break;
-        case "open":
-          await load(() => doc.open());
-          break;
-        case "save":
-          await saved(() => doc.save());
-          break;
-        case "save-as":
-          await saved(() => doc.saveAs());
-          break;
-        case "focus-preview":
-          focusPane("Preview");
-          break;
-
-        case "cycle-pane":
-          cyclePanes(true);
-          break;
-
-        // Chooses, rather than cycling. PRODUCT 6.4 gives Ctrl+1 and Ctrl+2 as
-        // "focus editor / preview" and F6 separately as "cycle pane focus";
-        // this item was cycling, so the two shortcuts did the same thing and
-        // neither did what the table says.
-        case "focus-editor":
-          editor?.focus();
-          break;
-        case "print":
-          printSettings?.open();
-          break;
-        case "toggle-images":
-          figures.toggle(!figures.shown);
-          break;
-
-        case "toggle-invisibles":
-          showInvisibles = !showInvisibles;
-          break;
-        case "toggle-diagnostics":
-          panelOpen = !panelOpen;
-          break;
-        case "next-diagnostic":
-          editor?.step(true);
-          break;
-        case "previous-diagnostic":
-          editor?.step(false);
-          break;
-        case "zoom-in":
-          zoom.in();
-          break;
-
-        case "zoom-out":
-          zoom.out();
-          break;
-
-        case "zoom-reset":
-          zoom.reset();
-          break;
-
-        case "marker-reference":
-          void markerHelp?.open();
-          break;
-
-        case "go-to-reference":
-          goto?.open();
-          break;
-        case "find":
-          find?.show(false);
-          break;
-        case "replace":
-          find?.show(true);
-          break;
-        case "find-next":
-          find?.step(true);
-          break;
-        case "find-previous":
-          find?.step(false);
-          break;
-      }
-    });
+    await listen<string>("menu", (event) => void command(event.payload));
   }
 
   // Separate from onMount, which cannot return a cleanup when it is async.
@@ -633,16 +760,47 @@ ${href}`)) return;
     const at = editor?.selection();
     if (!at) return;
 
-    const insertion = insertionFor(id, {
+    const insertion = insertionFor(id, where(at));
+    if (!insertion) return;
+
+    editor?.applyInsertion(at.from, at.to, insertion);
+  }
+
+  /** What an insertion needs to know about the document and the caret. */
+  function where(at: { text: string; from: number; to: number }) {
+    return {
       text: at.text,
       from: at.from,
       to: at.to,
       nextChapter: nextChapter(),
       nextVerse: nextVerse(),
-    });
-    if (!insertion) return;
+      // For a note's reference marker, which is the one field that can be
+      // filled in from where the caret already is.
+      reference: engine.reference ?? undefined,
+    };
+  }
 
-    editor?.applyInsertion(at.from, at.to, insertion);
+  /**
+   * Inserts a marker chosen by name, from the marker strip or the palette.
+   *
+   * Through the command where one exists, so `\c` picked out of a list writes
+   * exactly what the Chapter button writes. Otherwise the marker table says
+   * what shape it needs — wrapping, a line of its own, self-closing — which is
+   * the part that decides whether the file still parses.
+   */
+  async function insertMarker(marker: string): Promise<void> {
+    if (doc.readOnly) return;
+
+    const at = editor?.selection();
+    if (!at) return;
+
+    // Awaited rather than guessed at. The table is fetched once per session
+    // and is usually already here, because picking a marker by name means
+    // something has already listed them.
+    await markerTable.load();
+    const kind = markerClass(markerTable.find(marker)?.class);
+
+    editor?.applyInsertion(at.from, at.to, insertionForMarker(marker, kind, where(at)));
   }
 
   /**
@@ -677,6 +835,43 @@ ${href}`)) return;
 
     const parsed = Number(verse[1]);
     return Number.isFinite(parsed) ? parsed + 1 : undefined;
+  }
+
+  /**
+   * Moves the caret to an offset and shows it.
+   *
+   * The navigator, the outline, the sidebar list and the note card all do this
+   * and all mean the same thing by it: put the cursor there and let me see it.
+   */
+  function goToOffset(offset: number): void {
+    editor?.reveal(offset, offset);
+  }
+
+  /**
+   * Replaces a span of the document, from a panel rather than from typing.
+   *
+   * Through the editor's own transaction, so it is one undo step and the
+   * buffer stays the authority (ADR-003). A panel that wrote to `doc.text`
+   * directly would be a second writer to the document, and the engine's mirror
+   * would never hear about it.
+   */
+  function applySpan(from: number, to: number, text: string): void {
+    if (doc.readOnly) return;
+    editor?.replaceRange(from, to, text);
+  }
+
+  /** Turns a footnote into a cross-reference, or back (P6 inspector). */
+  function convertNote(note: NoteEntry): void {
+    if (doc.readOnly || note.start === null || note.end === null) return;
+
+    const source = doc.text.slice(note.start, note.end);
+    const converted = convert(source);
+    // `null` means there was nothing to change, so the document is left alone
+    // rather than dispatching a transaction that does nothing and costs an
+    // undo step.
+    if (converted === null) return;
+
+    editor?.replaceRange(note.start, note.end, converted);
   }
 
   /**
@@ -844,7 +1039,7 @@ ${href}`)) return;
     // one printed on the cap.
     if (event.shiftKey && event.code === "KeyM") {
       event.preventDefault();
-      panelOpen = !panelOpen;
+      layout.toggleDiagnostics();
       return;
     }
     if (event.shiftKey && event.code === "Digit8") {
@@ -863,6 +1058,13 @@ ${href}`)) return;
     }
 
     switch (event.key.toLowerCase()) {
+      // The palette. Ctrl+K everywhere, because it is the shortcut every
+      // editor written in the last decade uses for exactly this.
+      case "k":
+        event.preventDefault();
+        palette?.open();
+        break;
+
       case "f":
         event.preventDefault();
         find?.show(false);
@@ -913,12 +1115,32 @@ ${href}`)) return;
 
 <svelte:window onkeydown={onKeyDown} />
 
-<div class="app">
-  <Toolbar
-    onnew={() => void load(() => doc.createNew())}
-    onopen={(path) => void load(() => doc.open(path))}
-    onsave={() => void saved(() => doc.save())}
+<!--
+  The window, in one of two shapes (`lib/layout.svelte.ts`).
+
+  Workbench is four ruled columns with the apparatus docked; Study narrows the
+  navigator to a rail, widens the reading column and floats the apparatus
+  beside what it describes. The panes themselves are the same components in
+  both — what differs is how much room each is given.
+-->
+<div class="app" data-shell={layout.shell}>
+  <AppBar
+    onrun={(id) => void command(id)}
+    onpalette={() => palette?.open()}
+    chapter={chapterLabel}
+    section={sectionLabel}
+    reference={engine.reference}
   />
+
+  {#if layout.shell === "workbench"}
+    <DocumentBar
+      onrun={(id) => void command(id)}
+      usfm={engine.usfm.effective}
+      errors={counts.error}
+      warnings={counts.warning}
+      ready={engine.ready}
+    />
+  {/if}
 
   <MarkerHelp bind:this={markerHelp} />
 
@@ -942,10 +1164,18 @@ ${href}`)) return;
     ondiscard={() => void doc.clearSnapshots()}
   />
 
+  <CommandPalette
+    bind:this={palette}
+    diagnostics={engine.diagnostics}
+    onrun={(id) => void command(id)}
+    onmarker={(marker) => void insertMarker(marker)}
+    onreference={goToReference}
+    ondiagnostic={(index) => editor?.goTo(index, true)}
+    onclose={() => editor?.focus()}
+  />
+
   <UpdateBar />
   <UpdatePrompt />
-
-  <InsertToolbar oninsert={insert} disabled={doc.readOnly} />
 
   {#if outside}
     <ExternalChange
@@ -979,56 +1209,76 @@ ${href}`)) return;
 
   <FontNotice notices={fonts.notices} ondismiss={() => fonts.dismiss()} />
 
-  <main>
-    <SplitPane id="main" startLabel="USFM source" endLabel="Preview">
-      {#snippet start()}
-        <Editor
-          bind:this={editor}
-          value={doc.text}
-          onchange={(text, changes) => {
-            doc.edited(text, changes);
-            // Typing can introduce a script the document did not have, which
-            // changes both the leading and whether there is a font for it.
-            fonts.schedule(text);
-            snapshots.changed();
-            engine.edit(
-              changes.map((change) => ({
-                from: change.fromA,
-                to: change.toA,
-                insert: change.inserted,
-              })),
-              text,
-            );
-          }}
-          oncompositionstart={() => engine.startComposition()}
-          oncompositionend={(text) => engine.endComposition(text)}
-          ontokenrange={(from, to) => engine.requestTokens(from, to)}
-          oncursor={(at) => {
-            caret = at;
-            engine.locate(at);
-          }}
-          oncomplete={(at) => engine.completions(at)}
-          {showInvisibles}
-          readOnly={doc.readOnly}
-          onscroll={editorScrolled}
-        />
-      {/snippet}
+  <main class="body">
+    {#if layout.navigator || layout.shell === "study"}
+      <Navigator
+        {chapters}
+        {sections}
+        {activeChapter}
+        {activeSection}
+        verses={verseCount}
+        ongo={goToOffset}
+      />
+    {:else}
+      <!-- The folded navigator leaves a way back. Anything smaller than this
+           is a control nobody finds again. -->
+      <button
+        type="button"
+        class="unfold"
+        title="Show the navigator"
+        onclick={() => layout.toggleNavigator()}
+      >
+        ›
+        <span class="visually-hidden">Show the navigator</span>
+      </button>
+    {/if}
 
-      {#snippet end()}
-        <Preview
-          bind:this={preview}
-          onscroll={previewScrolled}
-          chunks={engine.chunks}
-          previews={engine.previews}
-          onselect={(start, end) => editor?.reveal(start, end, false)}
-          onfollow={(href) => void followLink(href)}
-          onreference={(reference) => void goToReference(reference)}
-          onfigure={(path) => void figures.request(doc, path)}
-          onneed={(chunk) => engine.requestPreview(chunk)}
-        />
-      {/snippet}
-    </SplitPane>
+    <div class="panes">
+      {#if layout.panes === "split"}
+        <SplitPane id="main" startLabel="USFM source" endLabel="Preview">
+          {#snippet start()}
+            {@render editorPane()}
+          {/snippet}
+
+          {#snippet end()}
+            {@render previewPane()}
+          {/snippet}
+        </SplitPane>
+      {:else if layout.panes === "editor"}
+        {@render editorPane()}
+      {:else}
+        {@render previewPane()}
+      {/if}
+    </div>
+
+    {#if layout.shell === "workbench"}
+      <Inspector
+        {sidebars}
+        {notes}
+        note={activeNote}
+        marker={markerHere}
+        chapter={chapterLabel}
+        newAt={chapterVerse(engine.reference ?? undefined)}
+        readOnly={doc.readOnly}
+        onapply={applySpan}
+        ongo={goToOffset}
+        onnewsidebar={() => insert("insert-sidebar")}
+        onnote={(index) => (noteChoice = index)}
+        onconvert={convertNote}
+        onreference={() => void markerHelp?.open()}
+      />
+    {/if}
   </main>
+
+  {#if layout.shell === "study"}
+    <MarkerStrip
+      onmarker={(marker) => void insertMarker(marker)}
+      ondiagnostics={() => layout.toggleDiagnostics()}
+      errors={counts.error}
+      warnings={counts.warning}
+      disabled={doc.readOnly}
+    />
+  {/if}
 
   <FindBar
     bind:this={find}
@@ -1043,111 +1293,257 @@ ${href}`)) return;
     onclose={() => editor?.focus()}
   />
 
-  <GoToReference
-    bind:this={goto}
-    onsubmit={goToReference}
-    onclose={() => editor?.focus()}
-  />
+  <GoToReference bind:this={goto} onsubmit={goToReference} onclose={() => editor?.focus()} />
 
   <DiagnosticsPanel
     diagnostics={engine.diagnostics}
-    open={panelOpen}
-    ontoggle={() => (panelOpen = !panelOpen)}
+    open={layout.diagnostics}
+    ontoggle={() => layout.toggleDiagnostics()}
     onselect={(index, focus) => editor?.goTo(index, focus)}
     onescape={() => editor?.focus()}
   />
 
-  <footer>
-    <span>{lines} lines</span>
-    <span>{doc.text.length} UTF-16 units</span>
-    {#if doc.summary}
-      <span>{doc.summary.encoding}</span>
-      <span title={doc.summary.mixed_eol ? "This file mixes line endings" : ""}>
-        {doc.summary.eol}
-      </span>
-      {#if doc.summary.bom}<span>BOM</span>{/if}
-    {/if}
-    {#if engine.reference}
-      <!-- Where the cursor is. Shows the published number when the file has
-           one, because that is the number on the page (PRODUCT §6.2). -->
-      <span class="reference">{engine.reference}</span>
-    {/if}
-    <VersionPicker version={engine.usfm} onchange={(v) => engine.overrideVersion(v)} />
-    <div class="spacer"></div>
-    {#if engine.desynced}
-      <span class="warn" title={engine.desynced}>Engine resyncing</span>
-    {:else if engine.diagnostics.length > 0}
-      <span>{counts.error} errors, {counts.warning} warnings</span>
-    {/if}
-    <span>{engine.version ? `Engine ${engine.version}` : "Engine loading…"}</span>
-    {#if doc.saveNote}<span class="note">Saved via {doc.saveNote}</span>{/if}
-    <!-- FILE-FIDELITY 3: a clean reload is silent apart from "a transient
-         status-bar notice". Here rather than in a bar, because nothing is
-         being asked and nothing was lost. -->
-    {#if reloaded}<span class="note">{reloaded}</span>{/if}
-    <!-- Only when zoomed. A permanent "100%" is a number nobody reads, and its
-         absence is what makes the reading mean something when it appears. -->
-    {#if zoom.changed}
-      <button
-        type="button"
-        class="zoom"
-        title="Reset to actual size"
-        onclick={() => zoom.reset()}>{zoom.percent}%</button
-      >
-    {/if}
-    {#if doc.limitations.length > 0}
-      <!-- What this host cannot do, said plainly. An editor that appears to
-           save and does not is the worst failure available to it, so the
-           browser build says so before it is relied on. -->
-      <!-- One label whatever the host can do, because the alternative
-           overclaims: a *new* document has no handle yet even in a browser
-           that can save in place, so keying the wording on `savesInPlace`
-           says "downloads a copy" about a Save that is about to write a real
-           file. The tooltip carries what is actually true. -->
-      <span class="limits" title={limitations}>Browser limits</span>
-    {/if}
-    <span>{doc.dirty ? "Unsaved changes" : "Saved"}</span>
-  </footer>
+  <StatusBar {position} notice={reloaded} errors={counts.error} warnings={counts.warning} />
 </div>
+
+<!--
+  The editor and the preview, written once and placed by whichever arrangement
+  is showing. Snippets rather than two copies of the markup: a split pane and a
+  single pane differ in where the component goes, not in what it is, and two
+  copies would eventually disagree about one of a dozen props.
+-->
+{#snippet editorPane()}
+  <div class="pane">
+    <!--
+      Workbench only. Study has the marker strip along the bottom of the
+      window, and two rows of the same markers a few hundred pixels apart is
+      one row too many -- the strip is wider, grouped, and says what each
+      marker is, which is the version worth keeping when there is room for it.
+    -->
+    {#if layout.shell === "workbench"}
+      <InsertToolbar
+        oninsert={insert}
+        disabled={doc.readOnly}
+        onexpand={() => layout.setPanes(layout.panes === "editor" ? "split" : "editor")}
+        oninvisibles={() => (showInvisibles = !showInvisibles)}
+        expanded={layout.panes === "editor"}
+        invisibles={showInvisibles}
+      />
+    {/if}
+
+    <div class="pane-body">
+      <Editor
+        bind:this={editor}
+        value={doc.text}
+        onchange={(text, changes) => {
+          doc.edited(text, changes);
+          // Typing can introduce a script the document did not have, which
+          // changes both the leading and whether there is a font for it.
+          fonts.schedule(text);
+          snapshots.changed();
+          engine.edit(
+            changes.map((change) => ({
+              from: change.fromA,
+              to: change.toA,
+              insert: change.inserted,
+            })),
+            text,
+          );
+        }}
+        oncompositionstart={() => engine.startComposition()}
+        oncompositionend={(text) => engine.endComposition(text)}
+        ontokenrange={(from, to) => engine.requestTokens(from, to)}
+        oncursor={(at) => {
+          caret = at;
+          position = editor?.position() ?? null;
+          // A caret that has landed in a note is a note worth showing again.
+          noteDismissed = false;
+          placeNote();
+          engine.locate(at);
+        }}
+        oncomplete={(at) => engine.completions(at)}
+        {showInvisibles}
+        readOnly={doc.readOnly}
+        onscroll={() => {
+          editorScrolled();
+          // The card is pinned to a line, and the line has moved.
+          placeNote();
+        }}
+      />
+
+      <!--
+        Study has no inspector column, so the apparatus comes to the text.
+        Inside the pane rather than over the window, so it is positioned
+        against the editor's own box and scrolls out of the way with it.
+      -->
+      {#if layout.shell === "study" && !noteDismissed}
+        <FloatingNote
+          {notes}
+          selected={activeNote}
+          at={noteRect}
+          readOnly={doc.readOnly}
+          onselect={(index) => (noteChoice = index)}
+          ongo={goToOffset}
+          onconvert={convertNote}
+          onclose={() => (noteDismissed = true)}
+        />
+      {/if}
+    </div>
+  </div>
+{/snippet}
+
+{#snippet previewPane()}
+  <div class="pane">
+    <div class="pane-head">
+      <span class="pane-name">Preview</span>
+      <span class="pane-note">
+        {#if engine.reference}{engine.reference}{:else}Reading pane{/if}
+        {#if layout.sync}· synced{/if}
+      </span>
+      <span class="zoomers">
+        <button type="button" title="Smaller" aria-label="Zoom out" onclick={() => zoom.out()}>
+          A−
+        </button>
+        <button type="button" title="Larger" aria-label="Zoom in" onclick={() => zoom.in()}>
+          A+
+        </button>
+      </span>
+    </div>
+
+    <div class="pane-body">
+      <Preview
+        bind:this={preview}
+        onscroll={previewScrolled}
+        chunks={engine.chunks}
+        previews={engine.previews}
+        onselect={(start, end) => editor?.reveal(start, end, false)}
+        onfollow={(href) => void followLink(href)}
+        onreference={(reference) => void goToReference(reference)}
+        onfigure={(path) => void figures.request(doc, path)}
+        onneed={(chunk) => engine.requestPreview(chunk)}
+      />
+    </div>
+  </div>
+{/snippet}
 
 <style>
   .app {
     display: flex;
     flex-direction: column;
     block-size: 100%;
+    background: var(--bg);
   }
 
-  footer {
+  /*
+   * The body, in the two arrangements the redesign draws.
+   *
+   * Fixed columns for the apparatus and fractional ones for the document,
+   * because the navigator and the inspector hold labels of a known size and
+   * the panes hold text that should take whatever is left.
+   */
+  .body {
+    flex: 1 1 auto;
+    min-block-size: 0;
+    display: grid;
+    grid-template-columns: 13rem minmax(0, 1fr) 18.25rem;
+  }
+
+  .app[data-shell="study"] .body {
+    grid-template-columns: 3.25rem minmax(0, 1fr);
+  }
+
+  /* Folded away, the navigator leaves a hairline column with the way back. */
+  .body:has(> .unfold) {
+    grid-template-columns: 1.25rem minmax(0, 1fr) 18.25rem;
+  }
+
+  .app[data-shell="study"] .body:has(> .unfold) {
+    grid-template-columns: 1.25rem minmax(0, 1fr);
+  }
+
+  .unfold {
+    border: none;
+    border-inline-end: 1px solid var(--line);
+    background: var(--bg2);
+    color: var(--fg3);
+    font: inherit;
+    cursor: pointer;
+    padding: 0;
+  }
+
+  .unfold:hover {
+    color: var(--acc-text);
+  }
+
+  .panes {
+    min-inline-size: 0;
+    min-block-size: 0;
+    border-inline-end: 1px solid var(--line);
+  }
+
+  .app[data-shell="study"] .panes {
+    border-inline-end: none;
+  }
+
+  .pane {
+    display: flex;
+    flex-direction: column;
+    block-size: 100%;
+    min-block-size: 0;
+  }
+
+  /* Positioned, so the floating note card measures against this box. */
+  .pane-body {
+    flex: 1 1 auto;
+    min-block-size: 0;
+    position: relative;
+  }
+
+  .pane-head {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    padding-block: 0.3rem;
-    padding-inline: 0.75rem;
-    background: var(--surface-sunken);
-    border-block-start: 1px solid var(--border);
-    font-size: 0.8125rem;
-    color: var(--text-muted);
+    gap: 0.625rem;
+    block-size: 2.375rem;
+    padding-inline: 0.875rem;
+    border-block-end: 1px solid var(--line2);
+    font-size: 0.75rem;
+    color: var(--fg2);
     flex: 0 0 auto;
   }
 
-  .spacer {
-    flex: 1 1 auto;
+  .pane-name {
+    font-weight: 500;
+    color: var(--fg);
   }
 
-  .note {
-    color: var(--accent);
+  .pane-note {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  .limits {
-    color: var(--severity-warning);
-    cursor: help;
+  .zoomers {
+    margin-inline-start: auto;
+    display: flex;
+    gap: 0.1875rem;
+    flex: 0 0 auto;
   }
 
-  .reference {
-    color: var(--text);
-    /* The reference may carry a published number in any script (UNICODE §6). */
-    font-family: var(--font-content);
-    font-variant-numeric: tabular-nums;
+  .zoomers button {
+    padding-block: 0.125rem;
+    padding-inline: 0.4375rem;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: var(--bg3);
+    color: var(--fg2);
+    font: inherit;
+    font-size: 0.71875rem;
+    cursor: pointer;
+  }
+
+  .zoomers button:hover {
+    background: var(--hl);
+    color: var(--fg);
   }
 
   /* Another window has this file. A notice rather than a dialog: the file is
@@ -1160,18 +1556,18 @@ ${href}`)) return;
     margin: 0;
     padding-block: 0.4rem;
     padding-inline: 0.75rem;
-    background: var(--surface-sunken);
-    border-block-end: 1px solid var(--border);
-    color: var(--text);
+    background: var(--bg2);
+    border-block-end: 1px solid var(--line);
+    color: var(--fg);
     font-size: 0.8125rem;
   }
 
   .held button {
     padding-block: 0.1rem;
     padding-inline: 0.5rem;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--bg);
     color: inherit;
     font: inherit;
     font-size: inherit;
@@ -1179,41 +1575,15 @@ ${href}`)) return;
   }
 
   .held button:hover {
-    border-color: var(--accent);
-  }
-
-  /* The zoom reading, which is also the way back to actual size. */
-  .zoom {
-    padding-block: 0;
-    padding-inline: 0.35rem;
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    background: none;
-    color: inherit;
-    font: inherit;
-    font-size: inherit;
-    cursor: pointer;
-  }
-
-  .zoom:hover {
-    border-color: var(--accent);
+    border-color: var(--acc);
   }
 
   .error {
     margin: 0;
     padding-block: 0.4rem;
     padding-inline: 0.75rem;
-    background: #7f1d1d;
+    background: var(--err);
     color: #fff;
     font-size: 0.8125rem;
-  }
-
-  main {
-    flex: 1 1 auto;
-    min-block-size: 0;
-  }
-
-  .warn {
-    color: #d97706;
   }
 </style>
