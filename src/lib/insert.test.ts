@@ -109,6 +109,59 @@ describe("the larger structures", () => {
   });
 });
 
+describe("notes", () => {
+  it("fills the reference in from where the caret is", () => {
+    const where = { ...at("text"), reference: "JHN 1:5" };
+    expect(withCaret("insert-footnote", where)).toBe("\\f + \\fr 1:5 \\ft |\\f*");
+  });
+
+  it("drops the book code, because a footnote points inside its own book", () => {
+    const where = { ...at("text"), reference: "GEN 12:3" };
+    expect(insertionFor("insert-footnote", where)?.text).toContain("\\fr 12:3 ");
+  });
+
+  it("leaves the reference out rather than writing an empty one", () => {
+    // `\fr ` with nothing after it is a marker with no value: a diagnostic
+    // produced by the editor itself.
+    expect(withCaret("insert-footnote", at(""))).toBe("\\f + \\ft |\\f*");
+  });
+
+  it("leaves it out when the caret is in a chapter but no verse", () => {
+    // The engine reports the chapter alone there, and a note cannot point at
+    // a chapter.
+    const where = { ...at("text"), reference: "JHN 1" };
+    expect(insertionFor("insert-footnote", where)?.text).not.toContain("\\fr");
+  });
+
+  it("wraps the selection as the note's text", () => {
+    const where = { ...at("or comprehended", 0, 15), reference: "1:5" };
+    expect(withCaret("insert-footnote", where)).toBe(
+      "\\f + \\fr 1:5 \\ft [or comprehended]\\f*",
+    );
+  });
+
+  it("writes a cross-reference with its own markers", () => {
+    const where = { ...at("text"), reference: "JHN 3:16" };
+    expect(withCaret("insert-xref", where)).toBe("\\x + \\xo 3:16 \\xt |\\x*");
+  });
+
+  it("stays inline, because a note sits inside a sentence", () => {
+    // Mid-line, with no newline opened in front of it -- the one thing that
+    // would move the note away from the word it annotates.
+    expect(insertionFor("insert-footnote", at("some text", 4, 4))?.text).not.toContain("\n");
+  });
+});
+
+describe("the sidebar block", () => {
+  it("writes a block with the caret on its heading", () => {
+    expect(withCaret("insert-sidebar", at(""))).toBe("\\esb\n\\ms |\n\\p \n\\esbe\n");
+  });
+
+  it("opens a line first when the caret is mid-line", () => {
+    expect(insertionFor("insert-sidebar", at("\\v 1 text"))?.text.startsWith("\n")).toBe(true);
+  });
+});
+
 describe("the command table", () => {
   it("gives every command an insertion", () => {
     // A button with no insertion is a button that does nothing.
