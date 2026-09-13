@@ -90,6 +90,16 @@ jobs:
         #
         # What the fuzzer is here for is unaffected: crashes, panics,
         # out-of-bounds spans and round-trip violations are all still caught.
+        #
+        # It takes both of these, because they are two different checks. The
+        # libFuzzer flag below stops it giving up on the seed corpus before it
+        # has fuzzed anything; `ASAN_OPTIONS` stops LeakSanitizer running its
+        # own report when the process exits, which it does regardless of what
+        # libFuzzer was told and which is what failed the run after a
+        # successful minute of fuzzing.
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+          LSAN_OPTIONS: detect_leaks=0
         run: |
           cargo fuzz run ${{ matrix.target }} "$GITHUB_WORKSPACE/corpus/fuzz-seeds" -- \
             -max_total_time=$(( ${{ github.event.inputs.minutes || 20 }} * 60 )) \
