@@ -191,6 +191,20 @@ fn usfm3_usj(source: &str) -> Result<Value> {
 ///   its first run**, on five corpus files carrying figures — and worth
 ///   raising upstream, since anything consuming `usfm3`'s USJ as USJ will
 ///   mis-read every attribute in it.
+/// - **Text after a `|` outside a character marker.** `usfm3` reads every `|`
+///   as the start of an attribute block and discards it, along with whatever
+///   follows, when the marker it is on cannot carry attributes. In the Indic
+///   scripts that is not markup: `|` is the danda, the sentence-ending
+///   punctuation, typed as an ASCII bar rather than U+0964. `backend::pipes`
+///   restores it, so our text runs carry the danda and `usfm3`'s stop short of
+///   it — 14 of the 200 corpus files, all of them Sanskrit-family translations
+///   in Assamese, Kannada, Oriya and Gujarati script. Ours is right and the
+///   parser is losing Scripture, so the reconciliation cuts both sides at the
+///   first `|` rather than pretending they agree.
+///
+///   The cost is named rather than hidden: this is the one thing the oracle no
+///   longer checks, because it cannot — there is nothing on the other side to
+///   compare against. `backend::pipes` carries its own tests for it.
 fn normalize(value: Value) -> Value {
     match value {
         Value::Object(map) => {
@@ -207,6 +221,17 @@ fn normalize(value: Value) -> Value {
                     lift_attributes(&value, &mut out);
                     continue;
                 }
+                if key == "content" {
+                    let content = cut_at_pipes(value);
+                    // Emptied by the cut, which is the same as never having
+                    // had any: the empty-array rule above would have dropped
+                    // it, and the other side may well have done exactly that.
+                    if content.as_array().is_some_and(|array| array.is_empty()) {
+                        continue;
+                    }
+                    out.insert(key, content);
+                    continue;
+                }
                 out.insert(key, normalize(value));
             }
 
@@ -215,6 +240,32 @@ fn normalize(value: Value) -> Value {
         Value::Array(items) => Value::Array(items.into_iter().map(normalize).collect()),
         other => other,
     }
+}
+
+/// Truncates every text run in a `content` array at its first `|`.
+///
+/// Only plain strings, and only inside `content` — a marker name or a verse
+/// number cannot contain a bar, and an attribute value that legitimately does
+/// has already been lifted out of the text by the time this runs.
+fn cut_at_pipes(value: Value) -> Value {
+    let Value::Array(items) = value else {
+        return normalize(value);
+    };
+
+    Value::Array(
+        items
+            .into_iter()
+            .map(|item| match item {
+                Value::String(text) => {
+                    Value::String(text.split('|').next().unwrap_or_default().to_string())
+                }
+                other => normalize(other),
+            })
+            // A run that was nothing but the danda is now nothing at all, and
+            // the other side never had a run there to compare it against.
+            .filter(|item| !matches!(item, Value::String(text) if text.is_empty()))
+            .collect(),
+    )
 }
 
 /// Turns `[{"key": "src", "value": "x"}]` into `"src": "x"`.

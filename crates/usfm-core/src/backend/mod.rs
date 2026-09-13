@@ -66,13 +66,27 @@ impl Backend {
             .collect()
     }
 
-    /// Diagnostics, converted to our codes.
-    pub(crate) fn diagnostics(&self) -> Vec<Diagnostic> {
-        self.parsed
+    /// Diagnostics, converted to our codes and corrected where the parser is
+    /// wrong about its own output.
+    ///
+    /// `source` is the text this backend was parsed from — the same string
+    /// `parse` was given, since the spans being examined are in its
+    /// coordinates. Taken as an argument rather than held, because ADR-003
+    /// makes the caller's copy the authoritative one and a third copy here
+    /// would be a third thing to keep in step.
+    ///
+    /// The correction is applied at this level, and not at either of the two
+    /// callers, so that neither the whole-document path nor the incremental
+    /// one can be fixed while the other is forgotten.
+    pub(crate) fn diagnostics(&self, source: &str) -> Vec<Diagnostic> {
+        let converted = self
+            .parsed
             .diagnostics()
             .unwrap_or_default()
             .iter()
             .map(diagnostics::convert)
-            .collect()
+            .collect();
+
+        diagnostics::without_false_sidebar_pairs(converted, source)
     }
 }

@@ -4,8 +4,19 @@ version = "0.1.0"
 description = "The USFM engine, compiled for the worker it runs in on every target"
 edition.workspace = true
 rust-version.workspace = true
-license.workspace = true
-repository.workspace = true
+# Spelled out rather than inherited, unlike every other crate here.
+#
+# `wasm-pack` parses this manifest itself rather than asking cargo, and older
+# builds of it do not resolve workspace inheritance for these two keys: they
+# see `{ workspace = true }` where they expect a string and fail with "invalid
+# type: map, expected a string for key `package.license`" before the build
+# starts. Which build a runner has depends on what `latest` resolved to when
+# its cache was filled, so this failed on macOS while linux and windows
+# passed, from the same commit.
+#
+# The values are the workspace's; `tests/manifest.rs` fails if they drift.
+license = "MIT"
+repository = "https://github.com/samueldotj/easy-usfm"
 publish = false
 
 [lib]

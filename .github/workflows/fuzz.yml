@@ -77,10 +77,24 @@ jobs:
         # "the required directory does not exist" -- and every nightly run
         # since the crate moved has failed on it, all three targets, before
         # fuzzing a single input.
+        #
+        # Leak detection is off, and this is the one place it is worth being
+        # explicit about why. ADR-001 records that `usfm3`'s `MarkerName::parse`
+        # interns any name outside its table with `Box::leak` — deliberate
+        # upstream, fine for the one-shot CLI it was written for, and the
+        # crate's most-wanted fix from our side. Every seed containing an
+        # unknown marker therefore "leaks", and `\z` markers are pervasive in
+        # exactly the alignment-bearing files this corpus is full of. Leaving
+        # it on means the job reports the same known upstream design decision
+        # every night and never gets as far as fuzzing.
+        #
+        # What the fuzzer is here for is unaffected: crashes, panics,
+        # out-of-bounds spans and round-trip violations are all still caught.
         run: |
           cargo fuzz run ${{ matrix.target }} "$GITHUB_WORKSPACE/corpus/fuzz-seeds" -- \
             -max_total_time=$(( ${{ github.event.inputs.minutes || 20 }} * 60 )) \
-            -rss_limit_mb=4096
+            -rss_limit_mb=4096 \
+            -detect_leaks=0
         working-directory: crates/usfm-core
 
       # A crash is only useful with the input that caused it.
