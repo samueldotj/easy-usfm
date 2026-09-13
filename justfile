@@ -86,7 +86,7 @@ test:
 
 # The engine has to compile for the target it actually ships on
 wasm:
-    cargo build --package easy-usfm-core --target wasm32-unknown-unknown
+    cargo build --package usfm-core --target wasm32-unknown-unknown
 
 # ------------------------------------------------------------------ cli ---
 

@@ -58,11 +58,27 @@ jobs:
             | while read -r file; do
                 cp "$file" "corpus/fuzz-seeds/$(echo "$file" | tr '/' '_')" || true
               done
-          ls corpus/fuzz-seeds | wc -l
+          seeds=$(ls corpus/fuzz-seeds | wc -l)
+          echo "$seeds seeds"
+          # Loudly, because a fuzzer with no seeds still runs and still passes:
+          # it spends the night discovering that a USFM file begins with a
+          # backslash and reports success. A green run that tested nothing is
+          # worse than a red one.
+          if [ "$seeds" -eq 0 ]; then
+            echo "::error::No seed files were found under corpus/. Fuzzing from nothing tests nothing."
+            exit 1
+          fi
 
       - name: Fuzz
+        # The seed directory is absolute because this step runs from inside the
+        # crate: `corpus/fuzz-seeds` is written at the repository root by the
+        # step above, and read relative to `crates/usfm-core` it names a
+        # directory that has never existed. cargo-fuzz says so plainly --
+        # "the required directory does not exist" -- and every nightly run
+        # since the crate moved has failed on it, all three targets, before
+        # fuzzing a single input.
         run: |
-          cargo fuzz run ${{ matrix.target }} corpus/fuzz-seeds -- \
+          cargo fuzz run ${{ matrix.target }} "$GITHUB_WORKSPACE/corpus/fuzz-seeds" -- \
             -max_total_time=$(( ${{ github.event.inputs.minutes || 20 }} * 60 )) \
             -rss_limit_mb=4096
         working-directory: crates/usfm-core

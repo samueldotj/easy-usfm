@@ -3,7 +3,7 @@
  *
  * "> 20 % perf regression fails the build."
  *
- * Reads the JSON `cargo bench -p easy-usfm-core --bench engine -- --json`
+ * Reads the JSON `cargo bench -p usfm-core --bench engine -- --json`
  * produces and compares each measurement against the pinned baseline. Anything
  * more than the tolerance slower fails.
  *
@@ -31,7 +31,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const BASELINE = join(here, "..", "crates", "easy-usfm-core", "benches", "baseline.json");
+const BASELINE = join(here, "..", "crates", "usfm-core", "benches", "baseline.json");
 
 const args = process.argv.slice(2);
 const updating = args.includes("--update");
