@@ -58,13 +58,53 @@ jobs:
             | while read -r file; do
                 cp "$file" "corpus/fuzz-seeds/$(echo "$file" | tr '/' '_')" || true
               done
-          ls corpus/fuzz-seeds | wc -l
+          seeds=$(ls corpus/fuzz-seeds | wc -l)
+          echo "$seeds seeds"
+          # Loudly, because a fuzzer with no seeds still runs and still passes:
+          # it spends the night discovering that a USFM file begins with a
+          # backslash and reports success. A green run that tested nothing is
+          # worse than a red one.
+          if [ "$seeds" -eq 0 ]; then
+            echo "::error::No seed files were found under corpus/. Fuzzing from nothing tests nothing."
+            exit 1
+          fi
 
       - name: Fuzz
+        # The seed directory is absolute because this step runs from inside the
+        # crate: `corpus/fuzz-seeds` is written at the repository root by the
+        # step above, and read relative to `crates/usfm-core` it names a
+        # directory that has never existed. cargo-fuzz says so plainly --
+        # "the required directory does not exist" -- and every nightly run
+        # since the crate moved has failed on it, all three targets, before
+        # fuzzing a single input.
+        #
+        # Leak detection is off, and this is the one place it is worth being
+        # explicit about why. ADR-001 records that `usfm3`'s `MarkerName::parse`
+        # interns any name outside its table with `Box::leak` — deliberate
+        # upstream, fine for the one-shot CLI it was written for, and the
+        # crate's most-wanted fix from our side. Every seed containing an
+        # unknown marker therefore "leaks", and `\z` markers are pervasive in
+        # exactly the alignment-bearing files this corpus is full of. Leaving
+        # it on means the job reports the same known upstream design decision
+        # every night and never gets as far as fuzzing.
+        #
+        # What the fuzzer is here for is unaffected: crashes, panics,
+        # out-of-bounds spans and round-trip violations are all still caught.
+        #
+        # It takes both of these, because they are two different checks. The
+        # libFuzzer flag below stops it giving up on the seed corpus before it
+        # has fuzzed anything; `ASAN_OPTIONS` stops LeakSanitizer running its
+        # own report when the process exits, which it does regardless of what
+        # libFuzzer was told and which is what failed the run after a
+        # successful minute of fuzzing.
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+          LSAN_OPTIONS: detect_leaks=0
         run: |
-          cargo fuzz run ${{ matrix.target }} corpus/fuzz-seeds -- \
+          cargo fuzz run ${{ matrix.target }} "$GITHUB_WORKSPACE/corpus/fuzz-seeds" -- \
             -max_total_time=$(( ${{ github.event.inputs.minutes || 20 }} * 60 )) \
-            -rss_limit_mb=4096
+            -rss_limit_mb=4096 \
+            -detect_leaks=0
         working-directory: crates/usfm-core
 
       # A crash is only useful with the input that caused it.

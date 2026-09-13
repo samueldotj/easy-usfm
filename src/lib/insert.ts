@@ -85,6 +85,36 @@ export const COMMANDS: readonly Command[] = [
     paragraph: true,
   },
   {
+    id: "insert-section",
+    label: "Section heading",
+    help: "Section heading — inserts \\s1 on a new line",
+    paragraph: true,
+  },
+  {
+    id: "insert-parallel",
+    label: "Parallel references",
+    help: "Parallel references — inserts \\r, the line under a section heading",
+    paragraph: true,
+  },
+  {
+    id: "insert-footnote",
+    label: "Footnote",
+    help: "Footnote — inserts \\f + \\fr … \\ft … \\f* at the caret",
+    paragraph: false,
+  },
+  {
+    id: "insert-xref",
+    label: "Cross reference",
+    help: "Cross reference — inserts \\x + \\xo … \\xt … \\x* at the caret",
+    paragraph: false,
+  },
+  {
+    id: "insert-sidebar",
+    label: "Study sidebar",
+    help: "Study sidebar — inserts an \\esb … \\esbe block",
+    paragraph: true,
+  },
+  {
     id: "insert-break",
     label: "Blank line",
     help: "Blank line — inserts \\b, the space between stanzas",
@@ -121,6 +151,14 @@ export interface Where {
   nextChapter?: number;
   /** The next verse number, likewise. */
   nextVerse?: number;
+  /**
+   * Where the caret is, as the engine reports it — `JHN 1:5` or `1:5`.
+   *
+   * Only a note wants this, and only for its `\fr`. A footnote whose reference
+   * is already filled in is the difference between one keystroke and having to
+   * remember which verse you were in.
+   */
+  reference?: string;
 }
 
 /**
@@ -204,6 +242,31 @@ export function insertionFor(id: string, where: Where): Insertion | null {
       return shift({ text, caret: "\\tr \\th1 ".length });
     }
 
+    case "insert-section":
+      return shift({ text: "\\s1 ", caret: 4 });
+
+    case "insert-parallel":
+      // The italic line of parallel passages that sits under a section
+      // heading. Its own line, and almost always directly after one.
+      return shift({ text: "\\r ", caret: 3 });
+
+    case "insert-footnote":
+      return note("f", "fr", "ft", selected, where.reference);
+
+    case "insert-xref":
+      return note("x", "xo", "xt", selected, where.reference);
+
+    case "insert-sidebar": {
+      // Written out rather than built from `newSidebar`, because the caret has
+      // to land on the heading and an empty `\ms` is not something a finished
+      // sidebar should carry. `sidebars.test.ts` checks that what this writes
+      // reads back as a sidebar, which is the coupling that matters: the two
+      // have to agree on the shape, not on the string.
+      const before = "\\esb\n\\ms ";
+      const text = `${before}\n\\p \n\\esbe\n`;
+      return shift({ text, caret: before.length });
+    }
+
     case "insert-figure": {
       // The caption position first, then the attributes. `src` is left empty
       // and selected: it is the one part that cannot be guessed, and it is
@@ -227,6 +290,150 @@ export function insertionFor(id: string, where: Where): Insertion | null {
  */
 function numbered(marker: string, number: number | undefined): string {
   return number === undefined ? `\\${marker} ` : `\\${marker} ${number}`;
+}
+
+/**
+ * The command that writes a given marker, where there is one.
+ *
+ * The marker strip and the palette's `\` mode both let a marker be picked by
+ * name, and for a dozen of them there is already a command that knows how to
+ * write it properly — with its number suggested, its pair closed, its block
+ * laid out. Routing through the command is what stops `\c` inserted from the
+ * strip behaving differently from `\c` inserted from the toolbar.
+ */
+const BY_MARKER: Record<string, string> = {
+  c: "insert-chapter",
+  v: "insert-verse",
+  p: "insert-paragraph",
+  s1: "insert-section",
+  s: "insert-section",
+  r: "insert-parallel",
+  q1: "insert-poetry",
+  b: "insert-break",
+  f: "insert-footnote",
+  x: "insert-xref",
+  esb: "insert-sidebar",
+  tr: "insert-table",
+  fig: "insert-figure",
+  bd: "insert-bold",
+  it: "insert-italic",
+};
+
+export function commandForMarker(marker: string): string | null {
+  return BY_MARKER[marker] ?? null;
+}
+
+/** What the marker table says a marker is. */
+export type MarkerClass = "character" | "paragraph" | "note" | "milestone" | "unclassified";
+
+const CLASSES: readonly string[] = [
+  "character",
+  "paragraph",
+  "note",
+  "milestone",
+  "unclassified",
+];
+
+/**
+ * The marker table's `class`, narrowed.
+ *
+ * It arrives from the engine as a string, because the wire format is data and
+ * not a type. A class this side does not recognise becomes "unclassified",
+ * which is the honest answer and the one whose insertion shape is safest.
+ */
+export function markerClass(value: string | undefined): MarkerClass {
+  return CLASSES.includes(value ?? "") ? (value as MarkerClass) : "unclassified";
+}
+
+/**
+ * An insertion for any marker at all, from what class it is.
+ *
+ * The fallback behind {@link commandForMarker}: USFM has several hundred
+ * markers and this application will never have a hand-written command for each
+ * one. What it can do is get the *shape* right, which is the part that decides
+ * whether the file still parses — a character marker wraps and closes, a
+ * paragraph marker takes a line of its own, a milestone is self-closing.
+ */
+export function insertionForMarker(
+  marker: string,
+  kind: MarkerClass,
+  where: Where,
+): Insertion {
+  const known = commandForMarker(marker);
+  if (known) {
+    const insertion = insertionFor(known, where);
+    if (insertion) return insertion;
+  }
+
+  const selected = where.text.slice(where.from, where.to);
+
+  if (kind === "character") return wrap(marker, selected);
+
+  if (kind === "note") {
+    // A caller, because a note without one is a diagnostic. `+` is USFM for
+    // "number it for me", which is what every published edition uses.
+    const open = `\\${marker} + `;
+    const close = `\\${marker}*`;
+    return { text: `${open}${selected}${close}`, caret: open.length, select: selected.length };
+  }
+
+  if (kind === "milestone") {
+    // Self-closing, and it marks a position rather than containing anything --
+    // so the selection is left alone and the marker goes in front of it.
+    const text = `\\${marker}\\*`;
+    return { text: `${text}${selected}`, caret: text.length, select: selected.length };
+  }
+
+  // Paragraph, and anything unclassified: a line of its own is the safe shape,
+  // because a paragraph marker halfway through a line is read as exactly that.
+  const lead = atLineStart(where.text, where.from) ? "" : "\n";
+  const text = `${lead}\\${marker} `;
+  return { text: `${text}${selected}`, caret: text.length, select: selected.length };
+}
+
+/**
+ * A note around the selection — a footnote or a cross-reference.
+ *
+ * The caller is `+`, which is USFM for "number it for me". A translator
+ * choosing their own caller character is the rare case; the automatic one is
+ * what every published edition uses.
+ *
+ * The reference is filled in from where the caret is when the engine knows,
+ * and left out entirely when it does not — rather than inserting `\fr ` with
+ * nothing after it, which is a marker with no value and a diagnostic waiting
+ * to happen.
+ */
+function note(
+  outer: string,
+  referenceMarker: string,
+  textMarker: string,
+  selected: string,
+  reference: string | undefined,
+): Insertion {
+  const at = chapterVerse(reference);
+  const open =
+    `\\${outer} + ` + (at === null ? "" : `\\${referenceMarker} ${at} `) + `\\${textMarker} `;
+  const close = `\\${outer}*`;
+
+  return {
+    text: `${open}${selected}${close}`,
+    caret: open.length,
+    select: selected.length,
+  };
+}
+
+/**
+ * The chapter and verse out of a reference, without the book code.
+ *
+ * `\fr` names a place within this book, so `JHN 1:5` has to become `1:5` — the
+ * book code belongs in a cross-reference's target, not in a footnote's own
+ * back-reference. A reference with no colon is a chapter the caret is in with
+ * no verse yet, which is not somewhere a note's reference can point.
+ */
+export function chapterVerse(reference: string | undefined): string | null {
+  if (!reference) return null;
+  const last = reference.trim().split(/\s+/).at(-1) ?? "";
+  return last.includes(":") ? last : null;
 }
 
 /**

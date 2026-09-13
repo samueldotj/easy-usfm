@@ -89,7 +89,7 @@ impl Document {
         self.diagnostics.get_or_init(|| {
             let mut diagnostics: Vec<Diagnostic> = self
                 .backend
-                .diagnostics()
+                .diagnostics(&self.source)
                 .into_iter()
                 // Marker conditions are re-derived from the marker table with
                 // a version model the parser does not have. Keeping its copies

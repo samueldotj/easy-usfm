@@ -176,25 +176,63 @@ fn composition_does_not_change_the_structure() {
     assert_eq!(notices(&other), 1, "the NFD file should be flagged");
 }
 
-/// A forty-thousand-line chapter parses in a time a person would accept.
+/// A forty-thousand-line chapter parses in time proportional to its size.
 ///
 /// Not a benchmark — those are pinned separately. This is the guard against an
 /// accidental quadratic, which is the failure mode a single enormous chapter
 /// finds and a corpus of ordinary books never does.
+///
+/// # Why this measures a ratio and not a clock
+///
+/// It used to assert that the parse finished inside ten seconds, which is a
+/// statement about the machine rather than about the algorithm. An unoptimised
+/// debug build on a shared runner is an order of magnitude slower than a
+/// developer's laptop, so the number that passed locally with a third of a
+/// second to spare took thirteen on CI — a red build every time, saying
+/// nothing about the code.
+///
+/// The property actually worth defending is in the test's own name. Quadruple
+/// the input: linear work quadruples, quadratic work goes up sixteenfold. The
+/// ratio is what distinguishes them and it is the same ratio on a slow machine
+/// as on a fast one. The threshold sits at eight — comfortably above the
+/// scheduling noise a four-times-linear measurement picks up, and comfortably
+/// below the sixteen a quadratic would produce.
+///
+/// Fixed costs push the ratio *down* rather than up, because they weigh more
+/// heavily on the smaller input. That is the safe direction: it can make a
+/// linear parse look better than linear, never make it look quadratic.
 #[test]
 fn a_very_long_chapter_does_not_go_quadratic() {
     let bytes =
         std::fs::read(directory().join("single-chapter-40000-lines.usfm")).expect("readable");
     let loaded = FileFidelity::capture(&bytes).expect("valid UTF-8");
 
-    let started = std::time::Instant::now();
-    let session = Session::new(&loaded.text);
-    let _ = session.diagnostics();
-    let elapsed = started.elapsed();
+    // A quarter of the same file rather than a second fixture, so the two
+    // measurements are over the same shape of content and differ only in size.
+    let lines: Vec<&str> = loaded.text.lines().collect();
+    let quarter = lines[..lines.len() / 4].join("\n");
 
+    let parse = |text: &str| {
+        let started = std::time::Instant::now();
+        let session = Session::new(text);
+        let _ = session.diagnostics();
+        started.elapsed()
+    };
+
+    // The smaller one first and twice: the first parse of the process pays for
+    // warming caches and faulting pages in, and charging that to the input
+    // being used as the baseline is what would make the ratio look bad.
+    let _ = parse(&quarter);
+    let small = parse(&quarter);
+    let large = parse(&loaded.text);
+
+    let ratio = large.as_secs_f64() / small.as_secs_f64().max(f64::EPSILON);
     assert!(
-        elapsed < std::time::Duration::from_secs(10),
-        "40,000 lines took {elapsed:?}, which suggests a quadratic"
+        ratio < 8.0,
+        "four times the input took {ratio:.1} times as long \
+         ({small:?} for {} lines, {large:?} for {}), which suggests a quadratic",
+        lines.len() / 4,
+        lines.len(),
     );
 }
 

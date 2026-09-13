@@ -454,7 +454,10 @@ impl Session {
                     .filter_map(|node| strip_prefix(node, offset))
                     .collect(),
                 diagnostics: backend
-                    .diagnostics()
+                    // The prefixed text, which is what was parsed and what
+                    // these spans are measured against; `unshift_span` below
+                    // moves them back into the document's coordinates.
+                    .diagnostics(source)
                     .into_iter()
                     // Re-derived from the marker table below, with a version
                     // model the parser does not have.

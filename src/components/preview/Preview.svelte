@@ -305,6 +305,11 @@
        (PRODUCT 8). That is P3.10's. */
     content-visibility: auto;
     contain-intrinsic-size: auto 800px;
+
+    /* What the floated sidebar measures itself against. `content-visibility`
+       already applies containment here, so this adds a name for the width and
+       nothing else. */
+    container-type: inline-size;
   }
 
   .pending {
@@ -590,11 +595,97 @@
    */
 
   :global(.usfm-sidebar) {
-    border-inline-start: 3px solid var(--border);
-    padding-inline-start: 0.9rem;
     margin-block: 0.9rem;
-    background: color-mix(in srgb, var(--surface-sunken) 60%, transparent);
-    padding-block: 0.5rem;
+    padding-block: 0.6rem 0.7rem;
+    padding-inline: 0.9rem;
+    background: var(--surface-sunken);
+    border: 1px solid var(--acc);
+    border-radius: var(--radius);
+    /* A sidebar is editorial apparatus rather than Scripture, so it is set in
+       the interface face at interface size. Reading it in the same serif at
+       the same measure as the text it sits beside is what makes a study Bible
+       hard to skim -- the eye needs to know at a glance which is which. */
+    font-family: var(--font-ui);
+    font-size: 0.85em;
+    line-height: 1.5;
+    color: var(--text-muted);
+  }
+
+  /* The `\esb` label, so the reader can see what produced the box. Generated
+     content rather than markup, because the renderer must not invent nodes the
+     document does not contain. */
+  :global(.usfm-sidebar)::before {
+    /* Doubled: a single backslash starts a hex escape in a CSS string, so
+       `"\esb"` is U+000E followed by "sb" rather than the marker. */
+    content: "\\esb";
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.75em;
+    letter-spacing: 0.04em;
+    color: var(--acc-text);
+    margin-block-end: 0.2rem;
+  }
+
+  /*
+   * In Study, a sidebar floats beside the Scripture rather than interrupting
+   * it, which is how a printed study Bible sets one and is the difference
+   * between reading around a note and reading through it.
+   *
+   * Only where there is room. The chapter's measure is capped at 38rem, so the
+   * threshold has to sit well under that or the float would be a rule that
+   * never fires; at 26rem the note is about 200px wide, which is a column and
+   * not a stack of two-word lines.
+   *
+   * A container query rather than a media query, because the question is how
+   * wide the *pane* is and not how wide the window is: the preview is one of
+   * three columns and a maximised window with the split dragged left has a
+   * narrow reading column on a wide screen. Container and media features are
+   * spelled `width` with no logical form in any shipping engine, which is why
+   * the physical name appears here and nowhere else.
+   */
+  @container (min-width: 26rem) {
+    :global([data-shell="study"] .usfm-sidebar) {
+      float: inline-end; /* lint-logical-ok: `float` has no logical shorthand */
+      inline-size: 46%;
+      margin-block: 0.25rem 0.75rem;
+      margin-inline-start: 1.4rem;
+      /* A rule along the top rather than all the way round: floated, the box
+         already reads as separate, and four borders beside four more of body
+         text is a page of boxes. */
+      border: none;
+      border-block-start: 2px solid var(--acc);
+      border-radius: 0;
+    }
+  }
+
+  /* The heading that follows a floated sidebar starts a new section and must
+     not wrap around it. */
+  :global([data-shell="study"] .usfm-s),
+  :global([data-shell="study"] .usfm-s1),
+  :global([data-shell="study"] .usfm-ms),
+  :global([data-shell="study"] .usfm-chapter) {
+    clear: both; /* lint-logical-ok: `clear` has no logical shorthand */
+  }
+
+  /* Its category and heading, which are the two parts a reader scans for. */
+  :global(.usfm-sidebar .usfm-cat) {
+    display: block;
+    font-size: 0.8em;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--acc-text);
+  }
+
+  :global(.usfm-sidebar .usfm-ms),
+  :global(.usfm-sidebar .usfm-ms1) {
+    font-size: 1.05em;
+    font-weight: 600;
+    color: var(--text);
+    margin-block: 0.1rem 0.25rem;
+  }
+
+  :global(.usfm-sidebar .usfm-para) {
+    margin-block-end: 0.35rem;
   }
 
   /* ---------------------------------------------------------- figure ---

@@ -220,7 +220,7 @@ Write-Host @"
    Check the engine builds:
 
        cargo test --workspace
-       cargo build -p easy-usfm-core --target wasm32-unknown-unknown
+       cargo build -p usfm-core --target wasm32-unknown-unknown
 
    The committed corpus is already in the repository. To re-verify it, or to
    rebuild the fetched tier:

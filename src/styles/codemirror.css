@@ -56,14 +56,20 @@
      poor to nonexistent for many of the scripts this project exists to serve,
      and a monospace-first stack renders them as tofu or falls back
      unpredictably per platform. Column alignment in the content area is
-     abandoned as a goal; it is unachievable for these scripts and not needed. */
-  font-family: var(--font-content);
+     abandoned as a goal; it is unachievable for these scripts and not needed.
+
+     `--font-source` is that same content family with a monospace tail rather
+     than a serif one, so a Latin file looks like source -- which is what the
+     redesign asks for -- while every script the table claims is still resolved
+     by `unicode-range` before the tail is ever reached. The section's rule is
+     kept exactly: no complex script can land in a monospace face. */
+  font-family: var(--font-source);
   line-height: var(--line-height);
   overflow: auto;
 }
 
 .cm-editor .cm-content {
-  font-family: var(--font-content);
+  font-family: var(--font-source);
   padding-block: 0.75rem;
   caret-color: var(--text);
 }
