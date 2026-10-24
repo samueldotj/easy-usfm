@@ -302,6 +302,62 @@ mod tests {
             .any(|d| d.code == DiagnosticCode::MarkerNewerThanDocument));
     }
 
+    /// A properly closed sidebar is not a fault, and the parser says it twice.
+    ///
+    /// The two tests above have used this exact document since they were
+    /// written, and both assert on one code — so the pair of errors the parser
+    /// raises on every well-formed `\esb` block sat here in the fixture,
+    /// unasserted, for as long as the fixture has existed. The correction is
+    /// in `backend::diagnostics`; this is the end-to-end guard that it is
+    /// still applied by the time anything above the facade can see it.
+    #[test]
+    fn a_closed_sidebar_is_neither_unclosed_nor_stray() {
+        let source = "\\id GEN\n\\usfm 3.1\n\\c 1\n\\p\n\\esb\n\\p body\n\\esbe\n\\p after\n";
+        let found = diagnostics_of(source, DiagnosticConfig::for_source(source));
+
+        for code in [
+            DiagnosticCode::UnclosedAtEof,
+            DiagnosticCode::StrayCloseMarker,
+        ] {
+            assert!(
+                !found.iter().any(|diagnostic| diagnostic.code == code),
+                "{} on a correctly closed \\esb block: {:?}",
+                code.as_str(),
+                found
+                    .iter()
+                    .map(|diagnostic| (diagnostic.code.as_str(), &diagnostic.message))
+                    .collect::<Vec<_>>()
+            );
+        }
+    }
+
+    /// The other half of the same rule, and the one that keeps it honest.
+    #[test]
+    fn a_sidebar_that_really_is_unclosed_still_reports() {
+        let source = "\\id GEN\n\\usfm 3.1\n\\c 1\n\\p\n\\esb\n\\p body\n";
+        let found = diagnostics_of(source, DiagnosticConfig::for_source(source));
+
+        assert!(
+            found
+                .iter()
+                .any(|diagnostic| diagnostic.code == DiagnosticCode::UnclosedAtEof),
+            "an \\esb with no \\esbe should still be reported"
+        );
+    }
+
+    #[test]
+    fn an_esbe_with_no_opener_still_reports() {
+        let source = "\\id GEN\n\\usfm 3.1\n\\c 1\n\\p\n\\esbe\n\\p after\n";
+        let found = diagnostics_of(source, DiagnosticConfig::for_source(source));
+
+        assert!(
+            found
+                .iter()
+                .any(|diagnostic| diagnostic.code == DiagnosticCode::StrayCloseMarker),
+            "a bare \\esbe should still be reported"
+        );
+    }
+
     #[test]
     fn the_2_x_positional_figure_form_is_a_warning() {
         let found = diagnostics_of(

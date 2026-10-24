@@ -258,20 +258,54 @@ impl VerseIndex {
         }
 
         for (chapter, entries) in &by_chapter {
-            for (index, entry) in entries.iter().enumerate() {
-                for earlier in &entries[..index] {
-                    if earlier.verse.overlaps(&entry.verse) {
+            // Both checks below sweep this order rather than comparing every
+            // pair, which is what they used to do — see the note on the sweep.
+            //
+            // Stable, so two entries with identical ranges stay in source
+            // order and the one the file wrote first is the one named as
+            // "earlier".
+            let mut order: Vec<usize> = (0..entries.len()).collect();
+            order.sort_by_key(|&index| (entries[index].verse.start, entries[index].verse.end));
+
+            // ---- overlaps ----
+            //
+            // A sweep, because the obvious version is quadratic and quadratic
+            // on the *clean* case: comparing each verse against every earlier
+            // one breaks out early when it finds an overlap, so the file that
+            // does the most work is the file with nothing wrong with it. A
+            // forty-thousand-verse chapter — one of the pathological corpus's
+            // shapes, and a real one for a lectionary or an interlinear — was
+            // eight hundred million comparisons to report nothing.
+            //
+            // Sorted by where each range starts, one range overlaps something
+            // earlier exactly when it starts at or before the furthest point
+            // anything so far has reached. Carrying that furthest point along
+            // with the entry that set it gives the partner to name, since that
+            // entry starts no later and ends no earlier than the overlap.
+            let mut reached: Option<(u16, usize)> = None;
+
+            for &index in &order {
+                let entry = entries[index];
+
+                if let Some((end, owner)) = reached {
+                    if entry.verse.start <= end {
                         diagnostics.push(Diagnostic {
                             code: DiagnosticCode::DuplicateVerse,
                             severity: Severity::Error,
                             span: entry.span.clone(),
                             message: format!(
                                 "{chapter}:{} overlaps {chapter}:{}, which appears earlier",
-                                entry.verse, earlier.verse
+                                entry.verse, entries[owner].verse
                             ),
                         });
-                        break;
                     }
+                }
+
+                // Only when this range reaches further. Keeping the earlier
+                // owner on a tie is what makes the message name the first
+                // occurrence rather than the most recent one.
+                if reached.is_none_or(|(end, _)| entry.verse.end > end) {
+                    reached = Some((entry.verse.end, index));
                 }
             }
 
@@ -281,20 +315,27 @@ impl VerseIndex {
             // ordinary in published Scripture, where a versification difference
             // or a text-critical decision routinely leaves a number unused.
             // Reporting it as a problem would cry wolf on most real files.
+            //
+            // The same sweep answers this one. Asking "is this number covered
+            // by any range" for every number up to the highest was the second
+            // quadratic in this function, and the same way round: a chapter
+            // with no gaps at all is the one that asks the question most.
+            //
+            // Walking the ranges in order of where they start, everything
+            // between the point already covered and the next range's start is
+            // a gap, and nothing else is.
             let Some(first) = entries.first() else {
                 continue;
             };
-            let covered: Vec<(u16, u16)> = entries
-                .iter()
-                .map(|entry| (entry.verse.start, entry.verse.end))
-                .collect();
-            let highest = covered.iter().map(|(_, end)| *end).max().unwrap_or(0);
+            let mut covered_to: u16 = 0;
 
-            for number in 1..=highest {
-                if !covered
-                    .iter()
-                    .any(|(start, end)| *start <= number && number <= *end)
-                {
+            for &index in &order {
+                let entry = entries[index];
+
+                // Saturating, so a range reaching the last representable verse
+                // cannot wrap round to zero and report the whole chapter
+                // missing.
+                for number in covered_to.saturating_add(1)..entry.verse.start {
                     diagnostics.push(Diagnostic {
                         code: DiagnosticCode::VerseGap,
                         severity: Severity::Information,
@@ -302,6 +343,8 @@ impl VerseIndex {
                         message: format!("chapter {chapter} has no verse {number}"),
                     });
                 }
+
+                covered_to = covered_to.max(entry.verse.end);
             }
         }
 

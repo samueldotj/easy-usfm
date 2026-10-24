@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Base styles.
  *
  * Two rules apply from the first commit rather than being retrofitted, because
@@ -11,9 +11,42 @@
  *    Lint-enforced at P1.12.
  *
  * 2. Light and dark from the start, driven by the system.
+ *
+ * # The palette is the redesign's
+ *
+ * Warm charcoal and paper rather than zinc, with a brass accent: the two
+ * grounds are the colour of paper and of ink on it, which is what this
+ * application is for. Three tones were moved from what the mock-up specified,
+ * and only three -- see `--fg3`, `--acc-text` and `--fn`. Everything else is
+ * the design's own value.
+ *
+ * The design's raw names (`--bg`, `--fg2`, `--acc`) are the ones the new
+ * interface is written against, because that is the vocabulary the mock-up
+ * uses and translating at every use site is how a redesign drifts. The older
+ * semantic names (`--surface`, `--text-muted`) are kept as aliases so that the
+ * components written before it keep working -- and because they say what a
+ * colour is *for*, which the raw names do not.
+ *
+ * Aliases live in one place rather than in all three theme blocks: custom
+ * property substitution is late-bound, so `--text: var(--fg)` written once
+ * follows `--fg` wherever it is redefined.
  */
 
 :root {
+  /* ------------------------------------------------------------ type ---
+   *
+   * IBM Plex for the interface, Literata for Scripture, IBM Plex Mono for
+   * source. Named rather than bundled: `font-src 'self'` (SECURITY §4) rules
+   * out a font CDN, and the offline build (PRODUCT §12) must not make the
+   * request at all -- so a system that has these faces uses them and one that
+   * does not falls back to something with the same proportions. Shipping four
+   * weights of three families would be about a megabyte of the download for a
+   * difference nobody is asked to notice.
+   */
+  --font-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", "Cascadia Mono", "SF Mono", ui-monospace, monospace;
+  --font-serif: "Literata", "Iowan Old Style", Georgia, serif;
+
   /* Content is proportional and script-appropriate; only the gutter is
      monospace. UNICODE §7 inverts the usual editor font choice because
      monospace coverage is poor to nonexistent for many complex scripts, and a
@@ -25,10 +58,22 @@
      per character, so a Tamil word inside an English sentence gets the size
      multiplier and the English does not -- with no markup and no script
      detection at render time. `lib/fonts.svelte.ts` builds it; the names
-     after it are what a system with none of those faces falls back to. */
-  --font-content:
-    "Easy USFM Content", "Noto Sans", system-ui, sans-serif;
-  --font-gutter: "Cascadia Mono", "SF Mono", "DejaVu Sans Mono", monospace;
+     after it are what a system with none of those faces falls back to.
+
+     Two stacks rather than one, which is what lets the redesign have its
+     monospace editor and its serif reading pane *without* giving up UNICODE
+     §7. Latin and Cyrillic are deliberately absent from the script table, so
+     they fall straight through the content family to whatever comes next --
+     Plex Mono in the editor, Literata in the preview. Every complex script is
+     claimed by a `unicode-range` before either can be reached, so the one
+     thing the section forbids cannot happen: Devanagari never lands in a
+     monospace face. */
+  --font-source: "Easy USFM Content", "IBM Plex Mono", "Cascadia Mono", ui-monospace, monospace;
+  --font-reading: "Easy USFM Content", "Literata", "Iowan Old Style", Georgia, serif;
+
+  /* The older names, kept pointing at the closest of the two. */
+  --font-content: var(--font-reading);
+  --font-gutter: var(--font-mono);
 
   /* 1.5 for Latin; 1.7 where marks sit above and below the baseline
      (UNICODE 7). Set from the open document's scripts, because line height is
@@ -38,32 +83,90 @@
      from adjacent lines touching. */
   --line-height: 1.5;
 
-  --surface: #ffffff;
-  --surface-sunken: #f4f4f5;
-  --text: #18181b;
-  /* Darker than it looks like it needs to be, because it is not only used on
-     the page. The status bar and the diagnostics panel sit on the *sunken*
-     surface, and against that the obvious zinc-500 measures 4.40 against the
-     4.5 PRODUCT 10 requires -- passing on white and failing where it is
-     actually read. Checked against both surfaces, not the lighter one. */
-  --text-muted: #67676f;
-  --border: #d4d4d8;
-  --accent: #2563eb;
+  /* --------------------------------------------------------- palette ---
+   *
+   * Light: paper. Three grounds, three inks, one accent.
+   */
+  --bg: #faf8f3;
+  --bg2: #f1eee6;
+  --bg3: #e7e3d8;
+  --line: #d5cfc1;
+  --line2: #e5e0d4;
+  --fg: #26231f;
+  --fg2: #665f54;
+
+  /* The design's third ink was #a09a8e, which measures 2.6:1 on paper. It sets
+     the small uppercase section labels and the status bar -- text at 10 and 11
+     pixels, which is the last place to spend contrast. Deepened until it
+     passes 4.5:1 on both the ground and the sunken ground (PRODUCT §10); it is
+     still visibly the quietest ink of the three, which is the job it had. */
+  --fg3: #726a5a;
+
+  /* Brass. Three roles, because one value cannot do all of them: the mock-up's
+     #b3781c is 3.5:1 on paper -- right for a rule, a dot, a 44px chapter
+     number or an icon, and not enough for a 12px label. So the chrome keeps
+     the design's brass and anything text-sized takes the deeper step, which is
+     the same rule the Modernist system states for its own accent. */
+  --acc: #b3781c;
+  --acc-text: #8a5b0c;
+  --acc-fill: #8a5b0c;
+  --acc-ink: #ffffff;
+
+  /* Syntax, from the design's editor colouring: markers blue, numbers brass,
+     note content green. */
+  --mk: #2f6f9e;
+  --num: #8a5b0c;
+  /* #4e8a4a in the mock-up, 3.9:1. Footnote text is body-sized. */
+  --fn: #437a40;
+
+  --err: #b03a28;
+  /* The caret's line, and a matched run. A wash rather than a fill: it sits
+     under text that still has to be read. */
+  --hl: rgb(179 120 28 / 14%);
+
+  /* Corner radius. The redesign is softer than the system it started from --
+     4px on controls, 3px on chips -- and nothing is rounder than that. */
+  --radius: 4px;
+  --radius-sm: 3px;
+
+  /* ---------------------------------------------- semantic aliases ---
+   *
+   * What a colour is for, in terms of what it is. Defined once; late binding
+   * carries them into every theme.
+   */
+  --surface: var(--bg);
+  --surface-sunken: var(--bg2);
+  --surface-raised: var(--bg3);
+  --text: var(--fg);
+  --text-muted: var(--fg2);
+  --text-quiet: var(--fg3);
+  --border: var(--line);
+  --border-quiet: var(--line2);
+  --accent: var(--acc-text);
 
   /* Syntax. Kept beside the other colours so a theme is one set of values,
      and chosen for 3:1 against the surface they sit on (PRODUCT §10). */
-  --syntax-marker: #6d28d9;
-  --syntax-chapter: #b45309;
-  --syntax-verse: #0369a1;
-  --syntax-milestone: #0f766e;
-  --syntax-attribute: #9d174d;
+  --syntax-marker: var(--mk);
+  --syntax-chapter: var(--num);
+  --syntax-verse: var(--num);
+  --syntax-milestone: var(--fn);
+  --syntax-attribute: var(--mk);
 
   /* Severity. Shape carries the meaning and colour only reinforces it
      (PRODUCT §10), so these are chosen for 4.5:1 against the surface — a
-     diagnostic that reads as decoration has failed at its one job. */
-  --severity-error: #b91c1c;
-  --severity-warning: #a16207;
-  --severity-information: #1d4ed8;
+     diagnostic that reads as decoration has failed at its one job.
+
+     Drawn from the palette rather than beside it: the diagnostics row in the
+     redesign uses the same brass and the same red as the rest of the chrome,
+     and a fourth family of reds would read as a different application. */
+  --severity-error: var(--err);
+  --severity-warning: var(--acc-text);
+  --severity-information: #2a6289;
+
+  /* The elevation the floating surfaces sit at -- the command palette, the
+     footnote inspector. One shadow, because there is only one thing that
+     floats above the panes. */
+  --shadow: 0 12px 32px rgb(40 30 10 / 18%);
 }
 
 /*
@@ -74,64 +177,87 @@
  * rather than as one `prefers-color-scheme` block. `theme.ts` sets the
  * attribute only to a resolved value -- never to "system" -- so the media
  * query governs exactly when the user has not overridden it.
+ *
+ * Only the raw palette is repeated. Everything derived from it is in `:root`.
  */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --surface: #18181b;
-    --surface-sunken: #101012;
-    --text: #e4e4e7;
-    --text-muted: #a1a1aa;
-    --border: #3f3f46;
-    --accent: #60a5fa;
+    --bg: #1b1a18;
+    --bg2: #222120;
+    --bg3: #2c2a27;
+    --line: #3a3733;
+    --line2: #2c2a27;
+    --fg: #ebe6dd;
+    --fg2: #a39d92;
+    /* #736d63 in the mock-up, 3.4:1 on the dark ground. Lifted for the same
+       reason its light counterpart was deepened. */
+    --fg3: #948d80;
 
-    --syntax-marker: #c4b5fd;
-    --syntax-chapter: #fcd34d;
-    --syntax-verse: #7dd3fc;
-    --syntax-milestone: #5eead4;
-    --syntax-attribute: #f9a8d4;
+    /* Brass on charcoal is 7.7:1, so here one value does all three jobs. */
+    --acc: #d9a441;
+    --acc-text: #d9a441;
+    --acc-fill: #d9a441;
+    --acc-ink: #1b1a18;
 
-    --severity-error: #f87171;
-    --severity-warning: #fbbf24;
-    --severity-information: #93c5fd;
+    --mk: #7fb4d6;
+    --num: #d9a441;
+    --fn: #8fbf8a;
+    --err: #e2604f;
+    --hl: rgb(217 164 65 / 13%);
+
+    --severity-information: #7fb4d6;
+    --shadow: 0 12px 32px rgb(0 0 0 / 60%);
   }
 }
 
 :root[data-theme="dark"] {
-  --surface: #18181b;
-  --surface-sunken: #101012;
-  --text: #e4e4e7;
-  --text-muted: #a1a1aa;
-  --border: #3f3f46;
-  --accent: #60a5fa;
+  --bg: #1b1a18;
+  --bg2: #222120;
+  --bg3: #2c2a27;
+  --line: #3a3733;
+  --line2: #2c2a27;
+  --fg: #ebe6dd;
+  --fg2: #a39d92;
+  --fg3: #948d80;
 
-  --syntax-marker: #c4b5fd;
-  --syntax-chapter: #fcd34d;
-  --syntax-verse: #7dd3fc;
-  --syntax-milestone: #5eead4;
-  --syntax-attribute: #f9a8d4;
+  --acc: #d9a441;
+  --acc-text: #d9a441;
+  --acc-fill: #d9a441;
+  --acc-ink: #1b1a18;
 
-  --severity-error: #f87171;
-  --severity-warning: #fbbf24;
-  --severity-information: #93c5fd;
+  --mk: #7fb4d6;
+  --num: #d9a441;
+  --fn: #8fbf8a;
+  --err: #e2604f;
+  --hl: rgb(217 164 65 / 13%);
+
+  --severity-information: #7fb4d6;
+  --shadow: 0 12px 32px rgb(0 0 0 / 60%);
 }
 
 :root[data-theme="light"] {
-  --surface: #ffffff;
-  --surface-sunken: #f4f4f5;
-  --text: #18181b;
-  --text-muted: #67676f;
-  --border: #d4d4d8;
-  --accent: #2563eb;
+  --bg: #faf8f3;
+  --bg2: #f1eee6;
+  --bg3: #e7e3d8;
+  --line: #d5cfc1;
+  --line2: #e5e0d4;
+  --fg: #26231f;
+  --fg2: #665f54;
+  --fg3: #726a5a;
 
-  --syntax-marker: #6d28d9;
-  --syntax-chapter: #b45309;
-  --syntax-verse: #0369a1;
-  --syntax-milestone: #0f766e;
-  --syntax-attribute: #9d174d;
+  --acc: #b3781c;
+  --acc-text: #8a5b0c;
+  --acc-fill: #8a5b0c;
+  --acc-ink: #ffffff;
 
-  --severity-error: #b91c1c;
-  --severity-warning: #a16207;
-  --severity-information: #1d4ed8;
+  --mk: #2f6f9e;
+  --num: #8a5b0c;
+  --fn: #437a40;
+  --err: #b03a28;
+  --hl: rgb(179 120 28 / 14%);
+
+  --severity-information: #2a6289;
+  --shadow: 0 12px 32px rgb(40 30 10 / 18%);
 }
 
 *,
@@ -147,7 +273,11 @@ body {
 }
 
 body {
-  font-family: var(--font-content);
+  /* The interface is Plex; Scripture is the content family, asked for by the
+     two panes that show it. The old rule set the content font on the body and
+     let the chrome inherit it, which put the reading face on menus and
+     buttons. */
+  font-family: var(--font-ui);
   line-height: var(--line-height);
   color: var(--text);
   background: var(--surface);
@@ -162,6 +292,21 @@ body {
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--acc);
   outline-offset: 2px;
+}
+
+/*
+ * Off screen, still announced.
+ *
+ * Was declared separately in four components, which is four chances for one of
+ * them to be subtly wrong -- and the wrong one is invisible by construction.
+ */
+.visually-hidden {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }

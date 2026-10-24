@@ -93,6 +93,7 @@ Rust sits in one place and the workspace covers it.
 | Document | Covers |
 |---|---|
 | [PRODUCT](docs/PRODUCT.md) | Goals, scope, interface, editor and preview behaviour, printing, diagnostics, acceptance criteria |
+| [INTERFACE](docs/INTERFACE.md) | The two shells, the command palette, the derived panels, the palette of colours and type |
 | [ARCHITECTURE](docs/ARCHITECTURE.md) | Layering, engine, parser facade, incremental parsing, delta protocol, performance, engine tests |
 | [FILE-FIDELITY](docs/FILE-FIDELITY.md) | Encoding, line endings, atomic save, recovery, external changes |
 | [UNICODE](docs/UNICODE.md) | Coordinate spaces, graphemes, normalization, IME, fonts, text direction |

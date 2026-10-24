@@ -1,14 +1,27 @@
 <script lang="ts">
   /**
-   * The diagnostics list, collapsible, below the editor (PRODUCT §4).
+   * The diagnostics table, docked below the panes (PRODUCT §4).
    *
    * A listbox rather than a stack of buttons. Five hundred diagnostics as five
    * hundred buttons is five hundred tab stops between the editor and the
    * status bar, which is the kind of thing that technically passes an
    * accessibility audit and is unusable in practice (PRODUCT §10). One tab
    * stop, arrow keys within.
+   *
+   * The redesign turns the list into columns — severity, line, code, message,
+   * and a way in — because a diagnostic is a record with four fields and
+   * reading a hundred of them means reading down one column at a time. The
+   * semantics did not change with the look: it is still one listbox, still
+   * `aria-activedescendant`, still selection-follows-cursor.
+   *
+   * The filter is here rather than in the engine. Every diagnostic has already
+   * been computed; hiding warnings is a question about the table, and sending
+   * it to the worker would mean a round trip to answer something this side
+   * already knows.
    */
 
+  import Icon from "./Icon.svelte";
+  import Segmented from "./Segmented.svelte";
   import type { Diagnostic } from "../worker/protocol";
 
   interface Props {
@@ -35,12 +48,30 @@
   const GLYPH = { error: "✕", warning: "▲", information: "●" } as const;
   const LABEL = { error: "Error", warning: "Warning", information: "Information" } as const;
 
-  const shown = $derived(diagnostics.slice(0, SHOWN));
+  type Filter = "all" | "error" | "warning";
+  let filter = $state<Filter>("all");
+
   const counts = $derived.by(() => {
     const counts = { error: 0, warning: 0, information: 0 };
     for (const diagnostic of diagnostics) counts[diagnostic.severity] += 1;
     return counts;
   });
+
+  /**
+   * The rows, each remembering where it came from.
+   *
+   * The index the editor is given has to be the index in the *unfiltered*
+   * list, because that is the list it holds. Filtering and then handing back a
+   * position in the filtered array would jump to a different diagnostic
+   * whenever anything was hidden — and only then, which is the worst kind of
+   * bug to find.
+   */
+  const rows = $derived(
+    diagnostics
+      .map((diagnostic, index) => ({ diagnostic, index }))
+      .filter(({ diagnostic }) => filter === "all" || diagnostic.severity === filter)
+      .slice(0, SHOWN),
+  );
 
   const summary = $derived(
     diagnostics.length === 0
@@ -60,7 +91,36 @@
   // Clamped rather than reset, so a diagnostic disappearing from the middle of
   // the list does not throw away the reader's place.
   $effect(() => {
-    if (active >= shown.length) active = Math.max(0, shown.length - 1);
+    if (active >= rows.length) active = Math.max(0, rows.length - 1);
+  });
+
+  /**
+   * When the last parse landed, so the header can say how fresh this is.
+   *
+   * Tracked on the array's identity: the engine replaces it on every parse,
+   * including one that found nothing, which is exactly the event being timed.
+   */
+  let checked = $state(Date.now());
+  $effect(() => {
+    diagnostics;
+    checked = Date.now();
+  });
+
+  let now = $state(Date.now());
+  $effect(() => {
+    if (!open) return;
+    // Five seconds, not one. The reading is "roughly how stale is this", and a
+    // timer that fires every second all day to move a number nobody is
+    // watching is a timer that should not exist.
+    const timer = setInterval(() => (now = Date.now()), 5000);
+    return () => clearInterval(timer);
+  });
+
+  const freshness = $derived.by(() => {
+    const seconds = Math.max(0, Math.round((now - checked) / 1000));
+    if (seconds < 5) return "just now";
+    if (seconds < 60) return `${seconds}s ago`;
+    return `${Math.round(seconds / 60)}m ago`;
   });
 
   /**
@@ -79,18 +139,20 @@
     return () => clearTimeout(timer);
   });
 
-  function choose(index: number, focus: boolean): void {
-    active = index;
-    onselect(index, focus);
+  function choose(at: number, focus: boolean): void {
+    active = at;
+    const row = rows[at];
+    if (row) onselect(row.index, focus);
   }
 
   function move(to: number): void {
-    if (shown.length === 0) return;
-    active = Math.max(0, Math.min(to, shown.length - 1));
+    if (rows.length === 0) return;
+    active = Math.max(0, Math.min(to, rows.length - 1));
     // Selection follows the cursor, so arrowing down the list scrolls the
     // editor to each one -- but focus stays here, or the next arrow key would
     // be typed into the document.
-    onselect(active, false);
+    const row = rows[active];
+    if (row) onselect(row.index, false);
     list?.querySelector<HTMLElement>(`[data-index="${active}"]`)?.scrollIntoView({ block: "nearest" });
   }
 
@@ -106,7 +168,7 @@
         move(0);
         break;
       case "End":
-        move(shown.length - 1);
+        move(rows.length - 1);
         break;
       case "Enter":
       case " ":
@@ -120,29 +182,51 @@
     }
     event.preventDefault();
   }
+
+  const filters = [
+    { value: "all" as const, label: "All" },
+    { value: "error" as const, label: "Errors" },
+    { value: "warning" as const, label: "Warnings" },
+  ];
 </script>
 
 <!-- `tabindex="-1"` for the collapsed case, where the listbox does not
      exist and the region itself is where F6 has to land. -->
 <section class="panel" class:open data-pane tabindex="-1" aria-label="Diagnostics">
-  <h2>
-    <button type="button" onclick={ontoggle} aria-expanded={open} aria-controls="diagnostics-list">
-      <span class="chevron" aria-hidden="true">{open ? "▾" : "▸"}</span>
-      Diagnostics
-      <span class="counts">
-        {#each ["error", "warning", "information"] as const as severity}
-          {#if counts[severity] > 0}
-            <span class="count {severity}">
-              <span aria-hidden="true">{GLYPH[severity]}</span>
-              {counts[severity]}
-              <span class="visually-hidden">{LABEL[severity]}</span>
-            </span>
-          {/if}
-        {/each}
-        {#if diagnostics.length === 0}<span class="clean">none</span>{/if}
-      </span>
-    </button>
-  </h2>
+  <div class="head">
+    <h2>
+      <button type="button" onclick={ontoggle} aria-expanded={open} aria-controls="diagnostics-list">
+        <span class="chevron" aria-hidden="true">{open ? "▾" : "▸"}</span>
+        Diagnostics
+      </button>
+    </h2>
+
+    <span class="counts">
+      {#each ["error", "warning", "information"] as const as severity}
+        {#if counts[severity] > 0}
+          <span class="count {severity}">
+            <span aria-hidden="true">{GLYPH[severity]}</span>
+            {counts[severity]}
+            <span class="visually-hidden">{LABEL[severity]}</span>
+          </span>
+        {/if}
+      {/each}
+      {#if diagnostics.length === 0}<span class="clean">none</span>{/if}
+    </span>
+
+    {#if open}
+      <Segmented
+        name="diagnostics-filter"
+        label="Filter diagnostics"
+        options={filters}
+        value={filter}
+        onchange={(value) => (filter = value)}
+        compact
+      />
+    {/if}
+
+    <span class="fresh">Live · re-checked {freshness}</span>
+  </div>
 
   <!-- Announced on a delay, and separate from the visible counts so the
        reading is a settled sentence rather than three numbers. -->
@@ -156,11 +240,11 @@
       tabindex="0"
       data-pane-focus
       aria-label="Diagnostics"
-      aria-activedescendant={shown.length > 0 ? `diagnostic-${active}` : undefined}
+      aria-activedescendant={rows.length > 0 ? `diagnostic-${active}` : undefined}
       bind:this={list}
       onkeydown={onKeyDown}
     >
-      {#each shown as diagnostic, index (diagnostic.code + ":" + diagnostic.start + ":" + index)}
+      {#each rows as row, at (row.diagnostic.code + ":" + row.diagnostic.start + ":" + row.index)}
         <!--
           The keyboard handler is on the listbox, not on each option, which is
           what the ARIA pattern asks for: one tab stop, arrow keys within,
@@ -170,31 +254,34 @@
         -->
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <li
-          id="diagnostic-{index}"
-          data-index={index}
+          id="diagnostic-{at}"
+          data-index={at}
           role="option"
-          aria-selected={index === active}
-          class:active={index === active}
-          onclick={() => choose(index, false)}
-          ondblclick={() => choose(index, true)}
+          aria-selected={at === active}
+          class:active={at === active}
+          onclick={() => choose(at, false)}
+          ondblclick={() => choose(at, true)}
         >
-          <span class="glyph {diagnostic.severity}" aria-hidden="true">
-            {GLYPH[diagnostic.severity]}
+          <span class="glyph {row.diagnostic.severity}" aria-hidden="true">
+            {GLYPH[row.diagnostic.severity]}
           </span>
-          <span class="visually-hidden">{LABEL[diagnostic.severity]},</span>
-          <span class="where">Line {diagnostic.line}</span>
-          <code>{diagnostic.code}</code>
-          <span class="message">{diagnostic.message}</span>
+          <span class="visually-hidden">{LABEL[row.diagnostic.severity]},</span>
+          <span class="where">L{row.diagnostic.line}</span>
+          <code>{row.diagnostic.code}</code>
+          <span class="message">{row.diagnostic.message}</span>
+          <span class="jump" aria-hidden="true">Jump <Icon name="jump" /></span>
         </li>
       {/each}
 
-      {#if diagnostics.length > shown.length}
+      {#if diagnostics.length > rows.length}
         <li class="more" role="presentation">
-          Showing {shown.length} of {diagnostics.length}.
+          Showing {rows.length} of {diagnostics.length}.
         </li>
       {/if}
-      {#if diagnostics.length === 0}
-        <li class="more" role="presentation">Nothing to report.</li>
+      {#if rows.length === 0}
+        <li class="more" role="presentation">
+          {diagnostics.length === 0 ? "Nothing to report." : "Nothing matches this filter."}
+        </li>
       {/if}
     </ul>
   {/if}
@@ -203,8 +290,7 @@
 <style>
   .panel {
     flex: 0 0 auto;
-    border-block-start: 1px solid var(--border);
-    background: var(--surface-sunken);
+    border-block-start: 1px solid var(--line);
     display: flex;
     flex-direction: column;
     min-block-size: 0;
@@ -215,40 +301,45 @@
     max-block-size: 30vh;
   }
 
+  .head {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding-inline: 1rem;
+    block-size: 2.125rem;
+    border-block-end: 1px solid var(--line2);
+    flex: 0 0 auto;
+    font-size: 0.75rem;
+  }
+
   h2 {
     margin: 0;
-    font-size: 0.8125rem;
+    font-size: inherit;
     font-weight: 500;
-    flex: 0 0 auto;
   }
 
   h2 button {
-    inline-size: 100%;
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    padding-block: 0.35rem;
-    padding-inline: 0.6rem;
+    gap: 0.375rem;
+    padding: 0;
     background: none;
     border: none;
-    color: var(--text-muted);
+    color: var(--fg);
     font: inherit;
-    text-align: start;
+    font-weight: 500;
     cursor: pointer;
-  }
-
-  h2 button:hover {
-    color: var(--text);
   }
 
   .chevron {
     inline-size: 0.75em;
+    color: var(--fg3);
   }
 
   .counts {
     display: flex;
     gap: 0.75rem;
-    margin-inline-start: auto;
+    color: var(--fg2);
   }
 
   .count {
@@ -256,7 +347,13 @@
   }
 
   .clean {
-    opacity: 0.7;
+    color: var(--fg3);
+  }
+
+  .fresh {
+    margin-inline-start: auto;
+    color: var(--fg3);
+    white-space: nowrap;
   }
 
   .list {
@@ -266,60 +363,78 @@
     overflow: auto;
     flex: 1 1 auto;
     min-block-size: 0;
-    font-size: 0.8125rem;
+    font-size: 0.78125rem;
   }
 
   .list:focus-visible {
-    outline: 2px solid var(--accent);
+    outline: 2px solid var(--acc);
     outline-offset: -2px;
   }
 
   li {
-    display: flex;
-    align-items: baseline;
-    gap: 0.5rem;
-    padding-block: 0.25rem;
-    padding-inline: 0.6rem;
+    display: grid;
+    grid-template-columns: 1.25rem 3.5rem 6.5rem minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 0.75rem;
+    block-size: 1.875rem;
+    padding-inline: 1rem;
+    border-block-end: 1px solid var(--line2);
     cursor: default;
   }
 
+  li.more {
+    display: block;
+    color: var(--fg3);
+    font-style: italic;
+    line-height: 1.875rem;
+  }
+
   li.active {
-    background: color-mix(in srgb, var(--accent) 20%, transparent);
+    background: var(--hl);
   }
 
   li:hover:not(.more) {
-    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    background: var(--hl);
   }
 
   .where {
-    color: var(--text-muted);
+    color: var(--fg2);
+    font-family: var(--font-mono);
+    font-size: 0.71875rem;
     font-variant-numeric: tabular-nums;
-    flex: 0 0 auto;
   }
 
   code {
-    font-family: var(--font-gutter);
-    font-size: 0.85em;
-    color: var(--text-muted);
-    flex: 0 0 auto;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: var(--fg3);
   }
 
   .message {
-    /* The one part allowed to be long; the rest of the row is fixed width. */
     min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  .more {
-    color: var(--text-muted);
-    font-style: italic;
+  /* The way in. Only on the row being read, because a column of "Jump" on
+     every row is a column of noise. */
+  .jump {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    color: var(--acc-text);
+    font-weight: 500;
+    font-size: 0.75rem;
+    visibility: hidden;
+  }
+
+  li.active .jump,
+  li:hover .jump {
+    visibility: visible;
   }
 
   /* Shape carries the severity; colour only reinforces it (PRODUCT §10). */
-  .glyph,
-  .count {
-    flex: 0 0 auto;
-  }
-
   .glyph.error,
   .count.error {
     color: var(--severity-error);
@@ -333,14 +448,5 @@
   .glyph.information,
   .count.information {
     color: var(--severity-information);
-  }
-
-  .visually-hidden {
-    position: absolute;
-    inline-size: 1px;
-    block-size: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
   }
 </style>

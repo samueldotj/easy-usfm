@@ -1,165 +1,266 @@
 <script lang="ts">
   /**
-   * The insert toolbar.
+   * The insert row, in the editor pane's header.
    *
-   * Icons rather than words, because there are nine of them and a row of nine
-   * words is a sentence nobody reads. Every one carries its meaning in three
-   * places: the icon, a `title` for the hover tooltip, and an `aria-label` for
-   * anyone who will never see either.
+   * # Markers rather than icons
    *
-   * # The icons are drawn here
+   * This row used to be nine drawn icons. The redesign writes the markers out
+   * instead — `\c`, `\v`, `\p` — and it is right for a reason the icons could
+   * not answer: there is no picture of `\s1`. Every icon here was a letter or
+   * a diagram standing in for a marker whose name is already two characters
+   * long and already the thing being learned. The hover help stays, because
+   * that is what says what each one does.
    *
-   * Inline SVG, not an icon font and not sprites fetched at runtime. A font
-   * would be a network request the offline build must not make (PRODUCT §12),
-   * and a fetched sprite is blocked by the policy outright (SECURITY §4). They
-   * are also `currentColor` throughout, so they follow the theme without a
-   * second set for dark mode.
-   *
-   * `aria-hidden` on every icon: the button already has a label, and a screen
-   * reader announcing "Bold graphic, Bold" is the same thing twice.
+   * Bold and Italic keep their letterforms, because those two genuinely have
+   * pictures and every editor draws them.
    *
    * # On both platforms
    *
    * Unlike the file commands, this is not something a native menu shows at a
-   * glance. Bold and Italic are toolbar buttons in every editor a translator
-   * has used, and putting them only in a menu on the desktop would make the
-   * desktop build the awkward one. The menu has them too — the same commands,
-   * by the same ids.
+   * glance, and putting it only in a menu on the desktop would make the
+   * desktop build the awkward one. The menu has the same commands, by the same
+   * ids.
    */
 
   import { COMMANDS } from "../lib/insert";
+  import Icon from "./Icon.svelte";
 
   interface Props {
     /** Runs a command by id. The ids are the menu's ids. */
     oninsert: (id: string) => void;
     /** Nothing can be inserted into a document another window holds. */
     disabled?: boolean;
+    /** The two toggles on the right of the row. */
+    onexpand: () => void;
+    oninvisibles: () => void;
+    expanded: boolean;
+    invisibles: boolean;
   }
 
-  let { oninsert, disabled = false }: Props = $props();
+  let {
+    oninsert,
+    disabled = false,
+    onexpand,
+    oninvisibles,
+    expanded,
+    invisibles,
+  }: Props = $props();
+
+  /**
+   * What each command writes, as the chip's face.
+   *
+   * Taken from the command's own help text, which already names the marker —
+   * so a chip can never show `\bd` for a command that inserts `\it`.
+   */
+  function face(id: string, help: string): string {
+    const marker = /\\([a-z]+[0-9]*)/.exec(help)?.[1];
+    if (id === "insert-bold") return "B";
+    if (id === "insert-italic") return "I";
+    return marker ? `\\${marker}` : "?";
+  }
+
+  /** The order the design's strip uses: structure, headings, poetry, notes. */
+  const ORDER = [
+    "insert-chapter",
+    "insert-verse",
+    "insert-paragraph",
+    "insert-section",
+    "insert-parallel",
+    "insert-poetry",
+    "insert-break",
+    "insert-footnote",
+    "insert-xref",
+    "insert-sidebar",
+    "insert-table",
+    "insert-figure",
+  ];
+
+  const chips = $derived(
+    ORDER.map((id) => COMMANDS.find((command) => command.id === id)).filter(
+      (command): command is (typeof COMMANDS)[number] => command !== undefined,
+    ),
+  );
+
+  const styles = $derived(
+    COMMANDS.filter((command) => command.id === "insert-bold" || command.id === "insert-italic"),
+  );
 </script>
 
 <div class="insert" role="toolbar" aria-label="Insert">
-  {#each COMMANDS as command (command.id)}
+  <!--
+    The markers scroll and the two toggles do not. In a narrow editor pane
+    twelve chips do not fit, and letting the whole row scroll pushes the
+    toggles off the end -- controls that exist but cannot be reached without
+    knowing to scroll sideways for them.
+  -->
+  <div class="markers">
+    <span class="label">Insert</span>
+
+  {#each chips as command (command.id)}
     <button
       type="button"
+      class="chip"
       title={command.help}
       aria-label={command.label}
       {disabled}
       onclick={() => oninsert(command.id)}
     >
-      <!--
-        24×24 throughout, stroked rather than filled, so they weigh the same
-        beside each other and beside the interface's text.
-      -->
-      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-        {#if command.id === "insert-chapter"}
-          <!-- A capital C: the marker this writes. -->
-          <text x="12" y="17" class="glyph">C</text>
-        {:else if command.id === "insert-verse"}
-          <text x="12" y="17" class="glyph">V</text>
-        {:else if command.id === "insert-bold"}
-          <text x="12" y="17" class="glyph bold">B</text>
-        {:else if command.id === "insert-italic"}
-          <text x="12" y="17" class="glyph italic">I</text>
-        {:else if command.id === "insert-paragraph"}
-          <!-- Three full lines: a paragraph of prose. -->
-          <path d="M4 6h16M4 12h16M4 18h11" />
-        {:else if command.id === "insert-break"}
-          <!-- Two blocks with a gap: the blank line between stanzas. -->
-          <path d="M4 5h16M4 9h16M4 19h16M4 15h16" />
-          <path d="M4 12h5M15 12h5" class="faint" />
-        {:else if command.id === "insert-poetry"}
-          <!-- Indented short lines: poetry, set in from the margin. -->
-          <path d="M4 6h16M8 12h12M8 18h9" />
-        {:else if command.id === "insert-table"}
-          <path d="M4 5h16v14H4zM4 10h16M10 5v14" />
-        {:else if command.id === "insert-figure"}
-          <!-- A frame with a horizon and a sun: a picture. -->
-          <path d="M4 5h16v14H4z" />
-          <path d="M4 15l4-4 3 3 4-5 5 6" />
-          <circle cx="9" cy="9" r="1.4" />
-        {/if}
-      </svg>
+      {face(command.id, command.help)}
     </button>
   {/each}
+
+  <span class="rule" aria-hidden="true"></span>
+
+  {#each styles as command (command.id)}
+    <button
+      type="button"
+      class="chip letter"
+      class:bold={command.id === "insert-bold"}
+      class:italic={command.id === "insert-italic"}
+      title={command.help}
+      aria-label={command.label}
+      {disabled}
+      onclick={() => oninsert(command.id)}
+    >
+      {face(command.id, command.help)}
+    </button>
+  {/each}
+  </div>
+
+  <span class="tools">
+    <button
+      type="button"
+      class="tool"
+      class:on={expanded}
+      aria-pressed={expanded}
+      title={expanded ? "Show the preview again" : "Editor only"}
+      onclick={onexpand}
+    >
+      <Icon name={expanded ? "split" : "editor"} />
+      <span class="visually-hidden">{expanded ? "Show the preview again" : "Editor only"}</span>
+    </button>
+
+    <button
+      type="button"
+      class="tool"
+      class:on={invisibles}
+      aria-pressed={invisibles}
+      title="Show invisible characters"
+      onclick={oninvisibles}
+    >
+      <Icon name="wrap" />
+      <span class="visually-hidden">Show invisible characters</span>
+    </button>
+  </span>
 </div>
 
 <style>
   .insert {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.15rem;
     align-items: center;
-    padding-block: 0.2rem;
-    padding-inline: 0.5rem;
-    background: var(--surface);
-    border-block-end: 1px solid var(--border);
+    gap: 0.375rem;
+    block-size: 2.375rem;
+    padding-inline: 0.625rem;
+    border-block-end: 1px solid var(--line2);
+    flex: 0 0 auto;
   }
 
-  button {
-    display: inline-flex;
+  .markers {
+    display: flex;
     align-items: center;
-    justify-content: center;
-    inline-size: 1.85rem;
-    block-size: 1.85rem;
-    padding: 0;
-    border: 1px solid transparent;
-    border-radius: 4px;
-    background: none;
-    color: var(--text-muted);
+    gap: 0.25rem;
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    overflow-x: auto;
+    /* The scrollbar would double the row's height for a row that is 38px by
+       design; the overflow is discoverable by dragging or by a wheel. */
+    scrollbar-width: none;
+  }
+
+  .markers::-webkit-scrollbar {
+    display: none;
+  }
+
+  .label {
+    margin-inline-end: 0.375rem;
+    font-size: 0.65625rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--fg3);
+    flex: 0 0 auto;
+  }
+
+  .chip {
+    padding-block: 0.1875rem;
+    padding-inline: 0.4375rem;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: var(--bg3);
+    color: var(--mk);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
     cursor: pointer;
+    flex: 0 0 auto;
   }
 
-  button:hover:not(:disabled) {
-    border-color: var(--border);
-    color: var(--text);
-    background: var(--surface-sunken);
+  .chip:hover:not(:disabled) {
+    background: var(--hl);
+    color: var(--fg);
   }
 
-  /* Visible focus, because this row is reachable by keyboard and a toolbar
-     whose focus cannot be seen is one that cannot be used without a mouse. */
-  button:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 1px;
-    color: var(--text);
-  }
-
-  button:disabled {
-    opacity: 0.4;
+  .chip:disabled {
+    opacity: 0.45;
     cursor: default;
   }
 
-  svg {
-    inline-size: 1.1rem;
-    block-size: 1.1rem;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 1.6;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-  }
-
-  /* The lettered icons are type, not strokes. */
-  .glyph {
-    fill: currentColor;
-    stroke: none;
-    font-family: var(--font-ui, system-ui), sans-serif;
-    font-size: 15px;
-    font-weight: 600;
-    text-anchor: middle;
+  .letter {
+    padding-inline: 0.5rem;
+    font-family: var(--font-ui);
+    color: var(--fg);
   }
 
   .bold {
-    font-weight: 800;
+    font-weight: 700;
   }
 
   .italic {
     font-style: italic;
-    font-weight: 500;
   }
 
-  .faint {
-    opacity: 0.45;
+  .rule {
+    inline-size: 1px;
+    block-size: 1.125rem;
+    background: var(--line);
+    margin-inline: 0.375rem;
+    flex: 0 0 auto;
+  }
+
+  .tools {
+    display: flex;
+    gap: 0.25rem;
+    flex: 0 0 auto;
+  }
+
+  .tool {
+    inline-size: 1.5rem;
+    block-size: 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: none;
+    color: var(--fg3);
+    cursor: pointer;
+    font-size: 1rem;
+  }
+
+  .tool:hover {
+    background: var(--bg3);
+    color: var(--fg);
+  }
+
+  .tool.on {
+    color: var(--acc-text);
   }
 </style>
