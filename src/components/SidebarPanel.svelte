@@ -24,6 +24,7 @@
 
   import { untrack } from "svelte";
 
+  import { confirmed } from "../lib/shell";
   import { changed, rewrite, wordCount, type Sidebar, type SidebarEdit } from "../lib/sidebars";
 
   interface Props {
@@ -149,13 +150,19 @@
    * Leaving the newline would leave a blank line where the sidebar was, which
    * in USFM is not nothing — it is a line the next parse has to decide about.
    */
-  function remove(): void {
+  async function remove(): Promise<void> {
     if (!sidebar || readOnly) return;
-    const confirmed = confirm(
+
+    // Through the shell, and awaited. On the desktop the browser's `confirm`
+    // is Tauri's, which is asynchronous — see `confirmed` for what reading it
+    // synchronously did, which here was to delete the block whatever the user
+    // answered.
+    const yes = await confirmed(
       `Remove this sidebar${sidebar.heading ? ` — “${sidebar.heading}”` : ""}?\n\n` +
         "Its heading and text are deleted from the document. Undo will bring it back.",
     );
-    if (!confirmed) return;
+    if (!yes) return;
+
     onapply(sidebar.start, sidebar.end + 1, "");
   }
 </script>
@@ -256,7 +263,7 @@
         <button type="button" class="secondary" onclick={() => ongo(sidebar.start)}>
           Go to L{sidebar.firstLine}
         </button>
-        <button type="button" class="danger" disabled={readOnly} onclick={remove}>Remove</button>
+        <button type="button" class="danger" disabled={readOnly} onclick={() => void remove()}>Remove</button>
         <button type="button" class="primary" disabled={readOnly || !dirty} onclick={apply}>
           Apply to source
         </button>

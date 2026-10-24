@@ -47,7 +47,7 @@
   import { ScrollSync, elementFor, scrollTo, topmostOffset, type Pane } from "./lib/scrollsync";
   import { SnapshotSchedule } from "./lib/snapshots";
   import type { LaunchQueueHost } from "./lib/launch";
-  import { isDesktop } from "./lib/shell";
+  import { confirmed, isDesktop } from "./lib/shell";
   import { theme, type Theme } from "./lib/theme.svelte";
   import { zoom } from "./lib/zoom.svelte";
 
@@ -110,9 +110,13 @@
    * sent is a request to that someone's server.
    */
   async function followLink(href: string): Promise<void> {
-    if (!confirm(`Open this link outside Easy USFM?
+    if (
+      !(await confirmed(`Open this link outside Easy USFM?
 
-${href}`)) return;
+${href}`))
+    ) {
+      return;
+    }
 
     if (isDesktop()) {
       const { openUrl } = await import("@tauri-apps/plugin-opener");
@@ -428,7 +432,7 @@ ${href}`)) return;
       "Taking over does not close it, and that window may still save over your changes.",
       "Take over anyway?",
     ].join("\n\n");
-    if (!confirm(warning)) return;
+    if (!(await confirmed(warning))) return;
     await doc.takeOver(path);
   }
 
