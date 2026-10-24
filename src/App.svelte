@@ -524,6 +524,11 @@ ${href}`))
       // The shell starts with an empty Open Recent; the list lives here.
       await doc.pushRecentToMenu();
 
+      // A book double-clicked in BibleCompose, or a file association. Before
+      // the update question below, so a prompt never lands over a document
+      // that is still opening.
+      await openWhatTheCommandLineHandedUs();
+
       // Whether this build can check for updates at all, and then the first-run
       // question (PRODUCT 11). Asked after the document is open and only while
       // nothing is unsaved -- a prompt over somebody's typing is dismissed by
@@ -979,6 +984,28 @@ ${href}`))
       const handle = launch.files?.[0];
       if (handle) void load(() => doc.adopt(handle));
     });
+  }
+
+  /**
+   * A file this window was launched to open.
+   *
+   * The desktop counterpart of `openWhatTheSystemHandedUs` above: BibleCompose
+   * opens a book by starting this editor on its USFM, and a file association
+   * does the same from the desktop.
+   *
+   * **Asked for rather than pushed.** The shell knows the path before this
+   * window exists, so an event emitted when it learns it would fire before
+   * anything here is listening — which loses the file silently, the one
+   * failure a person would read as "it just opened empty".
+   *
+   * A path that cannot be read is reported the way any other open is: `load`
+   * already turns a refusal into the message the editor shows, and an editor
+   * that opens empty with a reason beats one that opens empty without.
+   */
+  async function openWhatTheCommandLineHandedUs(): Promise<void> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    const path = await invoke<string | null>("launched_with");
+    if (path) await load(() => doc.open(path));
   }
 
   /**
