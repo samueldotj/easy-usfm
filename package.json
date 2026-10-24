@@ -1,6 +1,6 @@
 {
   "name": "easy-usfm",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "An editor for individual USFM Scripture files, for desktop and the web.",
   "private": true,
   "license": "MIT",

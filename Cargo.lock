@@ -1016,7 +1016,7 @@ checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 
 [[package]]
 name = "easy-usfm-cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "clap",
  "serde_json",
@@ -1025,7 +1025,7 @@ dependencies = [
 
 [[package]]
 name = "easy-usfm-tauri"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "blake3",
  "libc",
@@ -1044,7 +1044,7 @@ dependencies = [
 
 [[package]]
 name = "easy-usfm-wasm"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "console_error_panic_hook",
  "serde",
@@ -4600,7 +4600,7 @@ dependencies = [
 
 [[package]]
 name = "usfm-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "blake3",
  "proptest",
@@ -5472,7 +5472,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",

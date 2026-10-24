@@ -1,6 +1,6 @@
 [package]
 name = "easy-usfm-cli"
-version = "0.1.0"
+version = "0.2.0"
 description = "Command-line access to the USFM engine, for debugging and benchmarking"
 edition.workspace = true
 rust-version.workspace = true
