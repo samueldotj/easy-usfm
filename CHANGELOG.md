@@ -4,6 +4,14 @@ Notable changes, newest first. Versions follow [semantic versioning](https://sem
 
 ## Unreleased
 
+* **A Septuagint `α` verse is not a duplicate again.** `\v 18` followed by
+  `\v 18α` is how the Septuagint marks material added to verse 18, and
+  `VerseId::overlaps` has always said different segments never collide. The
+  sweep that replaced the pairwise duplicate check compared numbers alone,
+  so every `α` verse was an error — "15:18α overlaps 15:18" — in the corpus
+  Proverbs, and a project carrying that book could not build. Each segment
+  is now swept on its own, still in one sorted pass.
+
 * **A `\rem` no longer hides the chapter after it.** When a `\rem` came while
   a paragraph was open — typically the last line of an introduction, written
   by the tool that exported the file — the parser made the next `\c` or `\p`

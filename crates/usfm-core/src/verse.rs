@@ -282,10 +282,25 @@ impl VerseIndex {
             // anything so far has reached. Carrying that furthest point along
             // with the entry that set it gives the partner to name, since that
             // entry starts no later and ends no earlier than the overlap.
+            //
+            // One sweep per segment. Different segments never collide — that
+            // is [`VerseId::overlaps`]'s rule, and `18α` after `18` is how the
+            // Septuagint marks added material — so the bare verses, the `a`s,
+            // the `α`s each run against themselves alone. Sorting by segment
+            // first keeps that one pass: the sweep restarts where the segment
+            // changes. Without it every `α` verse in the corpus Proverbs was
+            // reported as overlapping the verse it extends.
+            let mut by_segment = order.clone();
+            by_segment.sort_by_key(|&index| entries[index].verse.segment);
             let mut reached: Option<(u16, usize)> = None;
+            let mut segment = None;
 
-            for &index in &order {
+            for &index in &by_segment {
                 let entry = entries[index];
+                if entry.verse.segment != segment {
+                    segment = entry.verse.segment;
+                    reached = None;
+                }
 
                 if let Some((end, owner)) = reached {
                     if entry.verse.start <= end {
@@ -469,6 +484,49 @@ mod tests {
             .diagnostics()
             .iter()
             .any(|d| d.code == DiagnosticCode::DuplicateVerse));
+    }
+
+    fn duplicates(source: &str) -> Vec<String> {
+        index_of(source)
+            .diagnostics()
+            .iter()
+            .filter(|d| d.code == DiagnosticCode::DuplicateVerse)
+            .map(|d| d.message.clone())
+            .collect()
+    }
+
+    /// `different_segments_never_collide` holds for the index, not only for
+    /// [`VerseId::overlaps`]. The sweep that replaced the pairwise check
+    /// compared numbers alone, and reported every Septuagint `α` verse in the
+    /// committed Proverbs as overlapping the verse it extends.
+    #[test]
+    fn the_index_does_not_report_a_segment_as_a_duplicate() {
+        assert_eq!(
+            duplicates("\\id PRO\n\\c 15\n\\p\n\\v 18 a\n\\v 18\u{3b1} b\n\\v 19 c\n"),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            duplicates("\\id GEN\n\\c 1\n\\p\n\\v 1a a\n\\v 1b b\n\\v 2 c\n"),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn the_same_segment_twice_is_still_a_duplicate() {
+        assert_eq!(
+            duplicates("\\id PRO\n\\c 15\n\\p\n\\v 18 a\n\\v 18\u{3b1} b\n\\v 18\u{3b1} c\n"),
+            ["15:18\u{3b1} overlaps 15:18\u{3b1}, which appears earlier"]
+        );
+    }
+
+    /// A segment between two overlapping plain verses must not hide the
+    /// overlap from the sweep.
+    #[test]
+    fn a_segment_does_not_hide_an_overlap_around_it() {
+        assert_eq!(
+            duplicates("\\id GEN\n\\c 1\n\\p\n\\v 1-3 a\n\\v 2\u{3b1} b\n\\v 3 c\n"),
+            ["1:3 overlaps 1:1-3, which appears earlier"]
+        );
     }
 
     #[test]
