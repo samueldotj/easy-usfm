@@ -2,6 +2,20 @@
 
 Notable changes, newest first. Versions follow [semantic versioning](https://semver.org/).
 
+## Unreleased
+
+* **A `\rem` no longer hides the chapter after it.** When a `\rem` came while
+  a paragraph was open — typically the last line of an introduction, written
+  by the tool that exported the file — the parser made the next `\c` or `\p`
+  a child of that paragraph. Chapter 1 then did not exist as far as
+  validation could tell: every paragraph in it was "not allowed before the
+  first `\c` marker", chapter 2 was out of sequence, and a one-chapter book
+  had no chapter at all. A Gujarati New Testament reported 214 such errors
+  across 27 books, none of them real. The blocks are now moved back out and
+  validated where they belong, so the tree, the verse index and the
+  diagnostics are all right, and a paragraph that really does come before the
+  first chapter is reported on the right line.
+
 ## 0.2.0
 
 * **A file given on the command line is opened.** `run` never looked at its

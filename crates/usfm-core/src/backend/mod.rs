@@ -11,7 +11,10 @@
 
 mod diagnostics;
 mod pipes;
+mod remarks;
 mod tree;
+
+use std::cell::OnceCell;
 
 use crate::{Diagnostic, Node};
 
@@ -22,6 +25,9 @@ use crate::{Diagnostic, Node};
 /// §8.1 maps our tiers onto it.
 pub(crate) struct Backend {
     parsed: usfm3::ParsedDocument,
+    /// The tree with the blocks the parser nested in a paragraph after a
+    /// `\rem` moved back out, if it nested any. See `remarks`.
+    repaired: OnceCell<Option<remarks::Repaired>>,
 }
 
 impl Backend {
@@ -39,12 +45,22 @@ impl Backend {
             // Diagnostics are requested at parse time but computed lazily, so
             // this costs nothing until something asks for them.
             parsed: usfm3::parse(source, usfm3::ParseOptions { diagnostics: true }),
+            repaired: OnceCell::new(),
         }
+    }
+
+    fn repaired(&self) -> Option<&remarks::Repaired> {
+        self.repaired
+            .get_or_init(|| remarks::repair(self.parsed.ast(), self.parsed.source_map()))
+            .as_ref()
     }
 
     /// The document's top-level nodes, converted to our model.
     pub(crate) fn tree(&self) -> Vec<Node> {
-        let mut content = tree::convert_document(self.parsed.ast(), self.parsed.source_map());
+        let mut content = match self.repaired() {
+            Some(repaired) => tree::convert_document(&repaired.ast, &repaired.source_map),
+            None => tree::convert_document(self.parsed.ast(), self.parsed.source_map()),
+        };
         // The parser reads every `|` as an attribute block and throws away
         // the ones a paragraph cannot hold. See `pipes`.
         pipes::restore(&mut content, self.parsed.tokens());
@@ -79,13 +95,21 @@ impl Backend {
     /// callers, so that neither the whole-document path nor the incremental
     /// one can be fixed while the other is forgotten.
     pub(crate) fn diagnostics(&self, source: &str) -> Vec<Diagnostic> {
-        let converted = self
-            .parsed
-            .diagnostics()
-            .unwrap_or_default()
-            .iter()
-            .map(diagnostics::convert)
-            .collect();
+        let upstream = self.parsed.diagnostics().unwrap_or_default();
+        let converted = match self.repaired() {
+            // The validator judged a tree with blocks missing from it.
+            Some(repaired) => {
+                let mut upstream = upstream.to_vec();
+                remarks::revalidate(
+                    &mut upstream,
+                    self.parsed.ast(),
+                    self.parsed.source_map(),
+                    repaired,
+                );
+                upstream.iter().map(diagnostics::convert).collect()
+            }
+            None => upstream.iter().map(diagnostics::convert).collect(),
+        };
 
         diagnostics::without_false_sidebar_pairs(converted, source)
     }

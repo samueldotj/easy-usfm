@@ -102,7 +102,7 @@ pub fn run(options: &OracleOpts) -> Result<()> {
         let ours = normalize(usfm_core::to_usj(
             usfm_core::Document::parse(source.clone()).content(),
         ));
-        let theirs = normalize(usfm3_usj(&source)?);
+        let theirs = normalize(unnest_after_rem(usfm3_usj(&source)?));
 
         if ours != theirs {
             differences
@@ -205,6 +205,9 @@ fn usfm3_usj(source: &str) -> Result<Value> {
 ///   The cost is named rather than hidden: this is the one thing the oracle no
 ///   longer checks, because it cannot — there is nothing on the other side to
 ///   compare against. `backend::pipes` carries its own tests for it.
+///
+/// One more is not in `normalize`, because it applies to `usfm3`'s side only:
+/// see [`unnest_after_rem`].
 fn normalize(value: Value) -> Value {
     match value {
         Value::Object(map) => {
@@ -240,6 +243,72 @@ fn normalize(value: Value) -> Value {
         Value::Array(items) => Value::Array(items.into_iter().map(normalize).collect()),
         other => other,
     }
+}
+
+/// Moves out of a paragraph the blocks `usfm3` nests in it after a `\rem`.
+///
+/// A `\rem` that arrives while a paragraph is open is nested in it, and the
+/// next block marker then closes only the `\rem` — so a `\c` or `\p` after it
+/// becomes a child of the paragraph instead of its sibling. `backend::remarks`
+/// repairs our tree, so on any file with the pattern the two sides differ by
+/// exactly that move. Not in the core corpus; found on a Gujarati New
+/// Testament whose every book ends its introduction `\ili1 …`, `\rem …`,
+/// `\c 1`. This applies the same move to `usfm3`'s side — every chapter, and
+/// every paragraph but a `\rem` after a `\rem`, out to the top level, with
+/// anything that followed a chapter kept after it in a continuation of the
+/// paragraph — so the rest of such a file is still compared.
+fn unnest_after_rem(mut value: Value) -> Value {
+    fn is_type(item: &Value, kind: &str) -> bool {
+        item.get("type").and_then(Value::as_str) == Some(kind)
+    }
+    fn is_rem(item: &Value) -> bool {
+        is_type(item, "para") && item.get("marker").and_then(Value::as_str) == Some("rem")
+    }
+    fn is_blank(item: &Value) -> bool {
+        item.as_str().is_some_and(|text| text.trim().is_empty())
+    }
+
+    let Some(top) = value.get_mut("content").and_then(Value::as_array_mut) else {
+        return value;
+    };
+    let mut out = Vec::with_capacity(top.len());
+    for item in std::mem::take(top) {
+        let children = match item.get("content").and_then(Value::as_array) {
+            Some(children) if is_type(&item, "para") => children.clone(),
+            _ => {
+                out.push(item);
+                continue;
+            }
+        };
+        let piece = |content: Vec<Value>| {
+            let mut para = item.clone();
+            para["content"] = Value::Array(content);
+            para
+        };
+        let mut run = Vec::new();
+        let mut first = true;
+        let mut after_rem = false;
+        for child in children {
+            let hoist = is_type(&child, "chapter")
+                || (after_rem && is_type(&child, "para") && !is_rem(&child));
+            after_rem |= is_rem(&child);
+            if !hoist {
+                run.push(child);
+                continue;
+            }
+            if first || !run.iter().all(is_blank) {
+                out.push(piece(std::mem::take(&mut run)));
+            }
+            run.clear();
+            out.push(child);
+            first = false;
+        }
+        if first || !run.iter().all(is_blank) {
+            out.push(piece(run));
+        }
+    }
+    *top = out;
+    value
 }
 
 /// Truncates every text run in a `content` array at its first `|`.
@@ -455,6 +524,19 @@ mod tests {
             usfm_core::Document::parse(source.to_string()).content(),
         ));
         let theirs = normalize(usfm3_usj(source).expect("usfm3 renders USJ"));
+
+        assert_eq!(ours, theirs, "{}", describe(&ours, &theirs));
+    }
+
+    #[test]
+    fn blocks_nested_after_a_rem_are_compared_where_they_belong() {
+        let source = "\\id 1JN\n\\ili1 licence\n\\rem note\n\\c 1\n\\cl Chapter 1\n\\p\n\\v 1 a\n\\rem more\n\\p\n\\v 2 b\n\\c 2\n\\p\n\\v 1 c\n";
+        let ours = normalize(usfm_core::to_usj(
+            usfm_core::Document::parse(source.to_string()).content(),
+        ));
+        let theirs = normalize(unnest_after_rem(
+            usfm3_usj(source).expect("usfm3 renders USJ"),
+        ));
 
         assert_eq!(ours, theirs, "{}", describe(&ours, &theirs));
     }
