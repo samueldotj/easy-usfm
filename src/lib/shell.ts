@@ -16,6 +16,65 @@ export function isDesktop(): boolean {
 }
 
 /**
+ * What the native shell's plugin is called.
+ *
+ * The shell is a Tauri plugin so that two applications can carry it —
+ * easy-usfm's own window, and BibleCompose, which opens this editor on one of
+ * a project's books in its own process. A plugin's commands are reached as
+ * `plugin:<name>|<command>`, and every call in this interface goes through
+ * {@link invokeShell} so that spelling is in one place.
+ */
+export const SHELL_PLUGIN = "easy-usfm";
+
+/** Calls one of the shell's own commands. */
+export async function invokeShell<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<T>(`plugin:${SHELL_PLUGIN}|${command}`, args);
+}
+
+/**
+ * Listens for an event sent to *this* window.
+ *
+ * Not the global `listen`, which hears an event whichever window it was sent
+ * to. Inside BibleCompose there may be an editor per book in one process, and
+ * a file changing under Genesis is not news to the window editing Exodus.
+ */
+export async function listenHere<T>(
+  event: string,
+  handler: (payload: T) => void,
+): Promise<() => void> {
+  const { getCurrentWebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+  return getCurrentWebviewWindow().listen<T>(event, (e) => handler(e.payload));
+}
+
+/**
+ * Whether this window was opened by a host on one book.
+ *
+ * Such a window edits that book and nothing else: which file is open is the
+ * host's to say, so it offers no New, no Open and no Open Recent. The shell
+ * enforces the same thing on its side; this is so nothing is offered that
+ * would only be refused.
+ */
+let bookOnly = false;
+
+/** Asks the shell which kind of window this is. Once, at startup. */
+export async function readProfile(): Promise<void> {
+  if (!isDesktop()) return;
+  try {
+    const profile = await invokeShell<{ fileMenu: string }>("shell_profile");
+    bookOnly = profile.fileMenu === "book";
+  } catch {
+    bookOnly = false;
+  }
+}
+
+/** Whether a command id is one this window offers. */
+export function offered(id: string): boolean {
+  if (!bookOnly) return true;
+  return id !== "new" && id !== "open" && !id.startsWith("recent:");
+}
+
+/**
  * Asks the user a yes-or-no question, and waits for the answer.
  *
  * # Why this exists rather than a bare `confirm()`
@@ -63,6 +122,5 @@ export async function engineVersion(): Promise<string> {
     return "web (engine not yet loaded)";
   }
 
-  const { invoke } = await import("@tauri-apps/api/core");
-  return invoke<string>("engine_version");
+  return invokeShell<string>("engine_version");
 }

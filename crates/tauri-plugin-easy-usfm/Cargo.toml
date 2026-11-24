@@ -1,0 +1,61 @@
+[package]
+name = "tauri-plugin-easy-usfm"
+version = "0.2.0"
+description = "The editor's desktop shell as a Tauri plugin: file access, atomic save, recovery, watching"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+# What `tauri-plugin` reads to name the permissions it generates. Must match
+# the name `init` gives the plugin, or the identifiers in a capability file
+# (`easy-usfm:default`) name a plugin that does not exist.
+links = "tauri-plugin-easy-usfm"
+
+# Everything the desktop editor does natively lives here, so that it can run
+# in two hosts: easy-usfm's own window, and a window BibleCompose opens on one
+# of a project's books in its own process. One implementation of the save
+# ladder, recovery and watching, whichever application a translator is in.
+
+[features]
+# The update check (PRODUCT 11, SECURITY 6). Off unless the host asks for it:
+# `easy-usfm-tauri` turns it on, and a host that owns its own updates — or
+# promises no network code at all — leaves it compiled out. A missing code
+# path is a fact; a setting is only a promise.
+updater = []
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }
+
+[dependencies]
+usfm-core = { path = "../usfm-core" }
+blake3.workspace = true
+tauri = { version = "2", features = [] }
+serde.workspace = true
+serde_json.workspace = true
+# Filesystem events (FILE-FIDELITY 3). `notify` falls back to polling itself
+# where a platform backend is unavailable, which is common on network mounts
+# and in containers -- exactly where translation files often live.
+notify = "8"
+
+# `kill(pid, 0)` is the portable way to ask whether a process is alive, and
+# there is no way to ask it from the standard library.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+# ReplaceFileW, not MoveFileEx. FILE-FIDELITY §2: ReplaceFileW preserves the
+# destination's ACLs, attributes, creation time, object ID, and alternate data
+# streams; MoveFileEx discards them.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_Storage_FileSystem",
+  # Asking whether the process that held a lock is still running (P4.2).
+  "Win32_System_Threading",
+] }
+
+[dev-dependencies]
+tempfile = "3"
+# The update gate is async, and its tests assert that nothing is sent without
+# consent -- which has to be awaited to be asserted.
+tokio = { version = "1", features = ["macros", "rt"] }

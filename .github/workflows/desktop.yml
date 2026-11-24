@@ -96,10 +96,10 @@ jobs:
         run: npm run build
 
       - name: Lint the shell
-        run: cargo clippy --package easy-usfm-tauri --all-targets -- -D warnings
+        run: cargo clippy --package easy-usfm-tauri --package tauri-plugin-easy-usfm --all-targets -- -D warnings
 
       - name: Build the shell
-        run: cargo build --package easy-usfm-tauri
+        run: cargo build --package easy-usfm-tauri --package tauri-plugin-easy-usfm
 
       - name: Test the shell
-        run: cargo test --package easy-usfm-tauri
+        run: cargo test --package easy-usfm-tauri --package tauri-plugin-easy-usfm

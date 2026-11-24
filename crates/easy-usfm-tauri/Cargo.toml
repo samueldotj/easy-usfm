@@ -1,7 +1,7 @@
 [package]
 name = "easy-usfm-tauri"
 version = "0.2.0"
-description = "Desktop shell: file access, atomic save, recovery, watching"
+description = "The desktop editor: easy-usfm's window around the shell plugin"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -9,10 +9,10 @@ repository.workspace = true
 publish = false
 
 [lib]
-# The library holds everything; main.rs is a four-line entry point. Tauri needs
-# this shape on mobile, and it also means the shell's logic -- the atomic save
-# ladder above all -- is reachable from integration tests without launching a
-# window.
+# The library holds the builder; main.rs is a four-line entry point. Tauri
+# needs this shape on mobile. Everything the shell *does* -- the save ladder,
+# recovery, watching -- is in `tauri-plugin-easy-usfm`, which BibleCompose
+# registers too, so the two applications write a file the same way.
 name = "easy_usfm_tauri_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
@@ -22,44 +22,13 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 # deployments are exactly the places that need the difference.
 [features]
 default = ["updater"]
-updater = []
+updater = ["tauri-plugin-easy-usfm/updater"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-usfm-core = { path = "../usfm-core" }
-blake3.workspace = true
+tauri-plugin-easy-usfm = { path = "../tauri-plugin-easy-usfm" }
 tauri = { version = "2", features = [] }
-serde.workspace = true
-serde_json.workspace = true
 tauri-plugin-dialog = "2.7.2"
 tauri-plugin-opener = "2.5.4"
-# Filesystem events (FILE-FIDELITY 3). `notify` falls back to polling itself
-# where a platform backend is unavailable, which is common on network mounts
-# and in containers -- exactly where translation files often live.
-notify = "8"
-
-# ReplaceFileW, not MoveFileEx. FILE-FIDELITY §2: ReplaceFileW preserves the
-# destination's ACLs, attributes, creation time, object ID, and alternate data
-# streams; MoveFileEx discards them.
-# `kill(pid, 0)` is the portable way to ask whether a process is alive, and
-# there is no way to ask it from the standard library.
-[target.'cfg(unix)'.dependencies]
-libc = "0.2"
-
-[target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = [
-  "Win32_Foundation",
-  "Win32_Storage_FileSystem",
-  # Asking whether the process that held a lock is still running (P4.2).
-  "Win32_System_Threading",
-] }
-
-[dev-dependencies]
-tempfile = "3"
-# The update gate is async, and its tests assert that nothing is sent without
-# consent -- which has to be awaited to be asserted.
-tokio = { version = "1", features = ["macros", "rt"] }
-usfm-core = { path = "../usfm-core" }
-blake3.workspace = true

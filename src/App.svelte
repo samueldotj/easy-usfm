@@ -47,7 +47,14 @@
   import { ScrollSync, elementFor, scrollTo, topmostOffset, type Pane } from "./lib/scrollsync";
   import { SnapshotSchedule } from "./lib/snapshots";
   import type { LaunchQueueHost } from "./lib/launch";
-  import { confirmed, isDesktop } from "./lib/shell";
+  import {
+    confirmed,
+    invokeShell,
+    isDesktop,
+    listenHere,
+    offered,
+    readProfile,
+  } from "./lib/shell";
   import { theme, type Theme } from "./lib/theme.svelte";
   import { zoom } from "./lib/zoom.svelte";
 
@@ -519,6 +526,9 @@ ${href}`))
     }
 
     if (isDesktop()) {
+      // Before anything that offers a command, so a window opened on one book
+      // never shows a New it would refuse.
+      await readProfile();
       await guardTheWindow();
       await listenToMenu();
       // The shell starts with an empty Open Recent; the list lives here.
@@ -533,8 +543,7 @@ ${href}`))
       // question (PRODUCT 11). Asked after the document is open and only while
       // nothing is unsaved -- a prompt over somebody's typing is dismissed by
       // the next keystroke, which is consent nobody gave.
-      const { invoke } = await import("@tauri-apps/api/core");
-      await updates.inspect(invoke);
+      await updates.inspect((command) => invokeShell(command));
       updates.askIfNeeded(doc.dirty);
     }
   });
@@ -549,6 +558,9 @@ ${href}`))
    * an id in it does nothing rather than doing something slightly different.
    */
   async function command(id: string): Promise<void> {
+    // A window a host opened on one book offers no New, Open or Open Recent
+    // (`offered`), and a route that names one anyway does nothing.
+    if (!offered(id)) return;
     if (id.startsWith("recent:")) {
       const path = id.slice("recent:".length);
       if (path === "clear") doc.clearRecent();
@@ -683,8 +695,9 @@ ${href}`))
    * drift into being a second implementation of anything.
    */
   async function listenToMenu(): Promise<void> {
-    const { listen } = await import("@tauri-apps/api/event");
-    await listen<string>("menu", (event) => void command(event.payload));
+    // This window's menu, and only this window's: inside BibleCompose there
+    // may be an editor per book, and a Save chosen in one is not the others'.
+    await listenHere<string>("menu", (id) => void command(id));
   }
 
   // Separate from onMount, which cannot return a cleanup when it is async.
@@ -1003,8 +1016,7 @@ ${href}`))
    * that opens empty with a reason beats one that opens empty without.
    */
   async function openWhatTheCommandLineHandedUs(): Promise<void> {
-    const { invoke } = await import("@tauri-apps/api/core");
-    const path = await invoke<string | null>("launched_with");
+    const path = await invokeShell<string | null>("launched_with");
     if (path) await load(() => doc.open(path));
   }
 
@@ -1106,11 +1118,11 @@ ${href}`))
         break;
       case "n":
         event.preventDefault();
-        void load(() => doc.createNew());
+        void command("new");
         break;
       case "o":
         event.preventDefault();
-        void load(() => doc.open());
+        void command("open");
         break;
       case "s":
         event.preventDefault();

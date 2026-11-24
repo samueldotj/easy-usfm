@@ -7,6 +7,7 @@
   ],
   "permissions": [
     "core:default",
+    "easy-usfm:default",
     "core:window:allow-set-title",
     "core:window:allow-destroy",
     "dialog:allow-open",
@@ -60,6 +61,11 @@
     "as for vetoing it, so without this the unsaved-changes guard turned into",
     "a window that could not be shut: clicking the close button rejected and",
     "did nothing. `core:default` grants neither, and the browser build never",
-    "reaches this path."
+    "reaches this path.",
+    "",
+    "`easy-usfm:default` is the shell's own commands -- open, save, recover,",
+    "watch -- which now live in `tauri-plugin-easy-usfm` so that BibleCompose",
+    "can carry the same editor. Granting them is granting what the window",
+    "always had; the plugin's default set is exactly its command list."
   ]
 }

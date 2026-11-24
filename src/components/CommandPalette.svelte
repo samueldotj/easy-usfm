@@ -25,7 +25,8 @@
    */
 
   import { engine } from "../lib/engine.svelte";
-  import { isMac, keysFor, modeOf, rank, type Mode } from "../lib/commands";
+  import { PALETTE, isMac, keysFor, modeOf, rank, type Mode } from "../lib/commands";
+  import { offered } from "../lib/shell";
   import type { MarkerRow } from "../lib/markerHelp";
   import type { Diagnostic } from "../worker/protocol";
 
@@ -139,7 +140,10 @@
       ];
     }
 
-    return rank(term).map((command) => ({
+    return rank(
+      term,
+      PALETTE.filter((command) => offered(command.id)),
+    ).map((command) => ({
       key: command.id,
       category: command.category,
       label: command.label,

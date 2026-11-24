@@ -312,17 +312,19 @@ pub fn lines_differing(snapshot: &str, disk: &str) -> usize {
 
 // -------------------------------------------------------------- commands ---
 
-/// Where snapshots live: `recovery/` inside the application's data directory.
+/// Where snapshots live: a folder inside the application's data directory,
+/// `recovery/` unless the host chose another name.
 ///
 /// Beside the user's file would be the other option and it is wrong twice: it
 /// litters a translation folder that is very often a Git working tree, and it
 /// fails outright on the read-only or network locations Scripture files are
 /// frequently kept in.
-fn root<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, String> {
+pub(crate) fn root<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, String> {
     use tauri::Manager;
+    let folder = app.state::<crate::Options>().recovery_folder.clone();
     app.path()
         .app_data_dir()
-        .map(|dir| dir.join("recovery"))
+        .map(|dir| dir.join(folder))
         .map_err(|error| error.to_string())
 }
 

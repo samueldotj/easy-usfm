@@ -12,8 +12,8 @@
 use std::fs;
 use std::path::Path;
 
-use easy_usfm_tauri_lib::figure::{read, Refusal};
-use easy_usfm_tauri_lib::fs::RealFs;
+use tauri_plugin_easy_usfm::figure::{read, Refusal};
+use tauri_plugin_easy_usfm::fs::RealFs;
 
 /// A folder to be a document's, and a secret beside it that is not.
 fn fixture() -> (tempfile::TempDir, std::path::PathBuf) {

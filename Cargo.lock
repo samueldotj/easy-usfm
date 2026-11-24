@@ -1027,19 +1027,11 @@ dependencies = [
 name = "easy-usfm-tauri"
 version = "0.2.0"
 dependencies = [
- "blake3",
- "libc",
- "notify",
- "serde",
- "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
+ "tauri-plugin-easy-usfm",
  "tauri-plugin-opener",
- "tempfile",
- "tokio",
- "usfm-core",
- "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3930,6 +3922,23 @@ dependencies = [
  "tauri-plugin-fs",
  "thiserror 2.0.19",
  "url",
+]
+
+[[package]]
+name = "tauri-plugin-easy-usfm"
+version = "0.2.0"
+dependencies = [
+ "blake3",
+ "libc",
+ "notify",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin",
+ "tempfile",
+ "tokio",
+ "usfm-core",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

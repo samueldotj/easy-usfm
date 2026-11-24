@@ -22,6 +22,7 @@ import type {
   Summary,
 } from "./documentService";
 import type { Eol } from "./eol";
+import { invokeShell, listenHere } from "./shell";
 
 interface NativeOpened {
   id: number;
@@ -37,10 +38,8 @@ interface NativeSave {
   note: string | null;
 }
 
-async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
-  const { invoke: call } = await import("@tauri-apps/api/core");
-  return call<T>(command, args);
-}
+/** The shell's commands, which live in its plugin (see `invokeShell`). */
+const invoke = invokeShell;
 
 export function tauriDocuments(): DocumentService {
   /**
@@ -203,12 +202,12 @@ export function tauriDocuments(): DocumentService {
     },
 
     async watch(path: string, onchange: (change: FileChanged) => void): Promise<void> {
-      const { listen } = await import("@tauri-apps/api/event");
       // One listener for the lifetime of the window rather than one per file:
-      // the shell watches a single path at a time and re-pointing it is a
-      // command, so a second listener here would double every report.
-      unlisten ??= await listen<FileChanged>("file-changed", (event) => {
-        handler?.(event.payload);
+      // the shell watches a single path at a time per window and re-pointing
+      // it is a command, so a second listener here would double every report.
+      // Sent to this window only, by the window's label.
+      unlisten ??= await listenHere<FileChanged>("file-changed", (change) => {
+        handler?.(change);
       });
       handler = onchange;
       await invoke("watch_document", { path });

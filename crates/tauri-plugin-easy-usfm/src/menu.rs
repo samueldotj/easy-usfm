@@ -35,10 +35,13 @@
 use tauri::menu::{
     AboutMetadata, Menu, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder,
 };
-use tauri::{AppHandle, Emitter, Runtime};
+use tauri::{AppHandle, Runtime};
+
+use crate::FileMenu;
 
 /// The event the interface listens for. One channel, with the item's id as the
-/// payload, so adding an item does not mean adding a listener.
+/// payload, so adding an item does not mean adding a listener. Sent only to
+/// the editor window the menu belongs to (see `editors`).
 pub const MENU_EVENT: &str = "menu";
 
 /// How many recent files the menu shows.
@@ -60,7 +63,17 @@ const fn shortcut(windows_linux: &'static str, macos: &'static str) -> &'static 
 }
 
 /// Builds the menu bar, with `recent` filling the Open Recent submenu.
-pub fn build<R: Runtime>(app: &AppHandle<R>, recent: &[String]) -> tauri::Result<Menu<R>> {
+///
+/// `file` decides what File offers. A window BibleCompose opened on one of a
+/// project's books is for that book: it has no New, no Open and no Open
+/// Recent, because which file is being edited is BibleCompose's to say, and
+/// its foot is Close Window rather than Exit, because Exit would close the
+/// application the editor is a guest in.
+pub fn build<R: Runtime>(
+    app: &AppHandle<R>,
+    recent: &[String],
+    file: FileMenu,
+) -> tauri::Result<Menu<R>> {
     let mut open_recent = SubmenuBuilder::new(app, "Open &Recent");
 
     if recent.is_empty() {
@@ -127,19 +140,24 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, recent: &[String]) -> tauri::Result
         .item(&MenuItemBuilder::with_id("insert-figure", "I&mage").build(app)?)
         .build()?;
 
-    let mut file = SubmenuBuilder::new(app, "&File")
-        .item(
-            &MenuItemBuilder::with_id("new", "&New")
-                .accelerator("CmdOrCtrl+N")
-                .build(app)?,
-        )
-        .item(
-            &MenuItemBuilder::with_id("open", "&Open…")
-                .accelerator("CmdOrCtrl+O")
-                .build(app)?,
-        )
-        .item(&open_recent.build()?)
-        .separator()
+    let book = file == FileMenu::Book;
+    let mut file = SubmenuBuilder::new(app, "&File");
+    if !book {
+        file = file
+            .item(
+                &MenuItemBuilder::with_id("new", "&New")
+                    .accelerator("CmdOrCtrl+N")
+                    .build(app)?,
+            )
+            .item(
+                &MenuItemBuilder::with_id("open", "&Open…")
+                    .accelerator("CmdOrCtrl+O")
+                    .build(app)?,
+            )
+            .item(&open_recent.build()?)
+            .separator();
+    }
+    let mut file = file
         .item(
             &MenuItemBuilder::with_id("save", "&Save")
                 .accelerator("CmdOrCtrl+S")
@@ -162,7 +180,14 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, recent: &[String]) -> tauri::Result
     // it is Exit at the foot of File. Predefined either way, so it does what
     // the platform's own Quit does -- which includes going through the
     // window's close handler and therefore the unsaved-changes prompt.
-    if !MAC {
+    if book {
+        // A guest window closes itself and nothing else. Predefined, so the
+        // close goes through the window's own handler and therefore the
+        // unsaved-changes prompt, exactly as Exit does.
+        file = file
+            .separator()
+            .item(&PredefinedMenuItem::close_window(app, Some("&Close"))?);
+    } else if !MAC {
         file = file
             .separator()
             .item(&PredefinedMenuItem::quit(app, Some("E&xit"))?);
@@ -337,16 +362,27 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, recent: &[String]) -> tauri::Result
     // items macOS puts nowhere else. Services, Hide, Hide Others and Show All
     // are predefined because they are the system's, not ours -- an application
     // that omits them is one whose Cmd+H does nothing.
-    let application = SubmenuBuilder::new(app, "Easy USFM")
+    //
+    // Named for the application running, which is not always this one: inside
+    // BibleCompose, Hide and Quit hide and quit BibleCompose, and a menu that
+    // said "Quit Easy USFM" would be promising something it does not do.
+    let host = app.package_info().name.clone();
+    let application = SubmenuBuilder::new(app, &host)
         .item(&about)
         .separator()
         .item(&PredefinedMenuItem::services(app, Some("Services"))?)
         .separator()
-        .item(&PredefinedMenuItem::hide(app, Some("Hide Easy USFM"))?)
+        .item(&PredefinedMenuItem::hide(
+            app,
+            Some(&format!("Hide {host}")),
+        )?)
         .item(&PredefinedMenuItem::hide_others(app, Some("Hide Others"))?)
         .item(&PredefinedMenuItem::show_all(app, Some("Show All"))?)
         .separator()
-        .item(&PredefinedMenuItem::quit(app, Some("Quit Easy USFM"))?)
+        .item(&PredefinedMenuItem::quit(
+            app,
+            Some(&format!("Quit {host}")),
+        )?)
         .build()?;
 
     // Window is a macOS convention with no equivalent elsewhere: Minimise and
@@ -364,31 +400,4 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, recent: &[String]) -> tauri::Result
     MenuBuilder::new(app)
         .items(&[&application, &file, &edit, &insert, &view, &window, &help])
         .build()
-}
-
-/// Installs the menu and forwards its events to the interface.
-pub fn install<R: Runtime>(app: &AppHandle<R>, recent: &[String]) -> tauri::Result<()> {
-    app.set_menu(build(app, recent)?)?;
-
-    app.on_menu_event(|app, event| {
-        // One event with the id as payload. The interface already knows how to
-        // do each of these -- the menu is another way to ask, not a second
-        // implementation.
-        let _ = app.emit(MENU_EVENT, event.id().0.as_str());
-    });
-
-    Ok(())
-}
-
-/// Rebuilds the menu so Open Recent matches what the interface holds.
-///
-/// The list lives in the interface's settings, and a native submenu cannot
-/// read it — so it is pushed here whenever it changes. Rebuilding the whole
-/// bar rather than mutating one submenu is not the efficient choice; it is the
-/// one where the menu cannot end up half-updated.
-#[tauri::command]
-pub fn set_recent_files<R: Runtime>(app: AppHandle<R>, paths: Vec<String>) -> Result<(), String> {
-    let menu = build(&app, &paths).map_err(|error| error.to_string())?;
-    app.set_menu(menu).map_err(|error| error.to_string())?;
-    Ok(())
 }

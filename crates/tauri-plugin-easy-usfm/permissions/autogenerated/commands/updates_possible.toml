@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-updates-possible"
+description = "Enables the updates_possible command without any pre-configured scope."
+commands.allow = ["updates_possible"]
+
+[[permission]]
+identifier = "deny-updates-possible"
+description = "Denies the updates_possible command without any pre-configured scope."
+commands.deny = ["updates_possible"]

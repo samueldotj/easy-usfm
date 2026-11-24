@@ -16,8 +16,8 @@ use std::cell::RefCell;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use easy_usfm_tauri_lib::fs::{FileMeta, FileSystem, RealFs};
-use easy_usfm_tauri_lib::save::{save, CopyBackReason, Rung, SaveError};
+use tauri_plugin_easy_usfm::fs::{FileMeta, FileSystem, RealFs};
+use tauri_plugin_easy_usfm::save::{save, CopyBackReason, Rung, SaveError};
 
 /// Which step to break.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

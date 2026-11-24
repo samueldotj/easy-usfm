@@ -32,8 +32,8 @@ struct Open {
     fidelity: FileFidelity,
 }
 
-/// Every open document. One window today; the map is what makes more than one
-/// possible without revisiting this.
+/// Every open document, in every editor window. Keyed by an id that is unique
+/// across the process, so windows need no say in it.
 #[derive(Default)]
 pub struct Documents(Mutex<HashMap<u64, Open>>);
 
@@ -119,7 +119,13 @@ impl Documents {
 // ------------------------------------------------------------- commands ---
 
 #[tauri::command]
-pub fn new_document(documents: tauri::State<'_, Documents>) -> Result<Opened, String> {
+pub fn new_document(
+    documents: tauri::State<'_, Documents>,
+    options: tauri::State<'_, crate::Options>,
+) -> Result<Opened, String> {
+    if options.file_menu == crate::FileMenu::Book {
+        return Err("this window edits only the book it was opened on".to_string());
+    }
     let loaded = FileFidelity::capture(NEW_DOCUMENT.as_bytes()).map_err(|e| e.to_string())?;
     let summary = Summary::of(&loaded.fidelity);
     let eols = terminators(&loaded.fidelity, loaded.text.matches('\n').count());
@@ -135,11 +141,23 @@ pub fn new_document(documents: tauri::State<'_, Documents>) -> Result<Opened, St
 }
 
 #[tauri::command]
-pub fn open_document(
+pub fn open_document<R: tauri::Runtime>(
+    window: tauri::Window<R>,
     path: String,
     documents: tauri::State<'_, Documents>,
+    options: tauri::State<'_, crate::Options>,
+    editors: tauri::State<'_, crate::editors::Editors>,
 ) -> Result<Opened, String> {
     let path = PathBuf::from(path);
+
+    // A window opened on one book opens that book. Refused here rather than
+    // only hidden in the interface, so it holds whatever the page asks for.
+    if options.file_menu == crate::FileMenu::Book && !editors.may_open(window.label(), &path) {
+        return Err(format!(
+            "{}: this window edits only the book it was opened on",
+            path.display()
+        ));
+    }
     let bytes = RealFs
         .read(&path)
         .map_err(|error| format!("{}: {error}", path.display()))?;

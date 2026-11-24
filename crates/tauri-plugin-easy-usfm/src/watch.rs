@@ -264,6 +264,7 @@ mod tests {
 
 // --------------------------------------------------------------- watching ---
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::sync::Mutex;
@@ -282,13 +283,14 @@ pub struct Changed {
     pub text: Option<String>,
 }
 
-/// The one file this window is watching.
+/// The file each editor window is watching, by window label.
 ///
 /// A watcher is held rather than recreated per event because dropping it stops
-/// the watch, and one file at a time is what PRODUCT §3 asks for: one file per
-/// window.
+/// the watch, and one file at a time per window is what PRODUCT §3 asks for:
+/// one file per window. Several windows, inside BibleCompose, is several of
+/// these, and a change is reported to the window watching that file.
 #[derive(Default)]
-pub struct FileWatch(Mutex<Option<Active>>);
+pub struct FileWatch(Mutex<HashMap<String, Active>>);
 
 pub struct Active {
     path: PathBuf,
@@ -304,15 +306,23 @@ impl FileWatch {
     /// is by content, not timing: the hash goes in, and whenever the event
     /// arrives — a second later on a local disk, ten on a network mount — it
     /// is recognised.
+    ///
+    /// Every window watching that file hears it, not only the one that saved:
+    /// a save is ours whichever of our windows made it.
     pub fn wrote(&self, path: &Path, hash: [u8; 32]) {
         if let Ok(held) = self.0.lock() {
-            if let Some(active) = held.as_ref() {
-                if active.path == path {
-                    if let Ok(mut state) = active.state.lock() {
-                        state.wrote(hash, Instant::now());
-                    }
+            for active in held.values().filter(|active| active.path == path) {
+                if let Ok(mut state) = active.state.lock() {
+                    state.wrote(hash, Instant::now());
                 }
             }
+        }
+    }
+
+    /// Stops a window's watch, when the window is gone.
+    pub fn forget(&self, label: &str) {
+        if let Ok(mut held) = self.0.lock() {
+            held.remove(label);
         }
     }
 }
@@ -326,6 +336,7 @@ impl FileWatch {
 #[tauri::command]
 pub fn watch_document<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
+    window: tauri::Window<R>,
     path: String,
     watch: tauri::State<'_, FileWatch>,
 ) -> Result<(), String> {
@@ -353,6 +364,8 @@ pub fn watch_document<R: tauri::Runtime>(
         .map_err(|error| error.to_string())?;
 
     let handle = app.clone();
+    let label = window.label().to_string();
+    let to = label.clone();
     let watched = state.clone();
     let file = target.clone();
     std::thread::spawn(move || {
@@ -380,7 +393,8 @@ pub fn watch_document<R: tauri::Runtime>(
                 Verdict::Gone => "gone",
             };
 
-            let _ = handle.emit(
+            let _ = handle.emit_to(
+                to.as_str(),
                 "file-changed",
                 Changed {
                     kind,
@@ -392,19 +406,23 @@ pub fn watch_document<R: tauri::Runtime>(
     });
 
     if let Ok(mut held) = watch.0.lock() {
-        *held = Some(Active {
-            path: target,
-            _watcher: watcher,
-            state,
-        });
+        held.insert(
+            label,
+            Active {
+                path: target,
+                _watcher: watcher,
+                state,
+            },
+        );
     }
     Ok(())
 }
 
 /// Stops watching, on a close or when moving to another file.
 #[tauri::command]
-pub fn unwatch_document(watch: tauri::State<'_, FileWatch>) {
-    if let Ok(mut held) = watch.0.lock() {
-        *held = None;
-    }
+pub fn unwatch_document<R: tauri::Runtime>(
+    window: tauri::Window<R>,
+    watch: tauri::State<'_, FileWatch>,
+) {
+    watch.forget(window.label());
 }

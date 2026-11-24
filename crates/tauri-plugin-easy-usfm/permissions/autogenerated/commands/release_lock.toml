@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-release-lock"
+description = "Enables the release_lock command without any pre-configured scope."
+commands.allow = ["release_lock"]
+
+[[permission]]
+identifier = "deny-release-lock"
+description = "Denies the release_lock command without any pre-configured scope."
+commands.deny = ["release_lock"]

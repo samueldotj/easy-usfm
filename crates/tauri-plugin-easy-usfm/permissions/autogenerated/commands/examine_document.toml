@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-examine-document"
+description = "Enables the examine_document command without any pre-configured scope."
+commands.allow = ["examine_document"]
+
+[[permission]]
+identifier = "deny-examine-document"
+description = "Denies the examine_document command without any pre-configured scope."
+commands.deny = ["examine_document"]

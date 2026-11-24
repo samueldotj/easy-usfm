@@ -1,0 +1,29 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = """
+Everything an editor window needs. Granted to editor windows only: none of
+these is a general filesystem permission -- each command touches a path a
+person chose in a native picker, the path a host opened the window on, or a
+document the window already holds.
+"""
+permissions = [
+  "allow-engine-version",
+  "allow-shell-profile",
+  "allow-launched-with",
+  "allow-set-recent-files",
+  "allow-new-document",
+  "allow-open-document",
+  "allow-save-document",
+  "allow-close-document",
+  "allow-read-figure",
+  "allow-snapshot-document",
+  "allow-clear-recovery",
+  "allow-examine-document",
+  "allow-take-lock",
+  "allow-release-lock",
+  "allow-watch-document",
+  "allow-unwatch-document",
+  "allow-updates-possible",
+  "allow-check-for-update",
+]

@@ -37,10 +37,10 @@ jobs:
       # for no benefit: ARCHITECTURE §3 keeps `usfm-core` standalone
       # precisely so this job can stay fast and platform-independent.
       - name: Clippy
-        run: cargo clippy --workspace --exclude easy-usfm-tauri --all-targets
+        run: cargo clippy --workspace --exclude easy-usfm-tauri --exclude tauri-plugin-easy-usfm --all-targets
 
       - name: Test
-        run: cargo test --workspace --exclude easy-usfm-tauri
+        run: cargo test --workspace --exclude easy-usfm-tauri --exclude tauri-plugin-easy-usfm
 
       # The performance budgets are compiled out of debug builds. A debug build
       # is roughly an order of magnitude slower, so asserting 15 ms there would
