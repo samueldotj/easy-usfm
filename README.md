@@ -75,7 +75,9 @@ crates/
 ├── usfm-core/   facade, incremental session, offsets, diagnostics, indexes
 ├── easy-usfm-cli/    parse, diagnostics, usj, bench, check
 ├── easy-usfm-wasm/   wasm-bindgen surface, worker protocol
-└── easy-usfm-tauri/  file access, atomic save, recovery, watching
+├── tauri-plugin-easy-usfm/  file access, atomic save, recovery, watching —
+│                     the shell, as a plugin BibleCompose carries too
+└── easy-usfm-tauri/  the desktop app: its window around the plugin
 src/                  Svelte frontend
 xtask/                development tasks — corpus, markers, oracle
 fuzz/                 cargo-fuzz targets

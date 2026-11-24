@@ -43,7 +43,7 @@ SvelteKit is omitted deliberately: a single-window editor needs no router, no SS
                                    │ platform service interfaces
                  ┌─────────────────┴─────────────────┐
                  ▼                                   ▼
-   easy-usfm-tauri (file I/O only)        Browser (FSA API / download)
+   tauri-plugin-easy-usfm (file I/O only)  Browser (FSA API / download)
 ```
 
 Svelte components never call Tauri APIs directly:
@@ -68,8 +68,19 @@ crates/
 │                     diagnostic codes, verse index, normalization index
 │                     internal dependency: usfm3 (pinned exactly)
 ├── easy-usfm-wasm/   wasm-bindgen surface, worker protocol
-└── easy-usfm-tauri/  file access, atomic save, recovery, watching, commands
+├── tauri-plugin-easy-usfm/  file access, atomic save, recovery, watching,
+│                     commands — per window, registered by either host
+└── easy-usfm-tauri/  the desktop app: one window, adopted by the plugin
 ```
+
+**The shell is a Tauri plugin so that two applications can host it.**
+easy-usfm's own window registers it and adopts `main`; BibleCompose registers
+it book-only and opens an editor window on one of a project's books in its
+own process (BibleCompose ADR-007). Everything a window holds — the file it
+was opened on, its watch, its recent list, its menu — is kept by window label,
+and events go only to the window they concern. The interface reaches the
+commands as `plugin:easy-usfm|…` through `invokeShell` in `lib/shell.ts`, and
+asks `shell_profile` whether it may offer New and Open.
 
 `usfm-core` builds standalone with no Tauri and no filesystem access, and is a candidate for its own repository — CI in seconds rather than minutes, platform-independence enforced structurally, and the Phase 0 CLI becomes a debugging tool used throughout every later phase.
 

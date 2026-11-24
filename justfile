@@ -79,10 +79,10 @@ fmt-check:
 # The shell is excluded here and covered by `just app`; it drags in a system
 # webview and turns a seconds-long check into a minutes-long one.
 lint:
-    cargo clippy --workspace --exclude easy-usfm-tauri --all-targets -- -D warnings
+    cargo clippy --workspace --exclude easy-usfm-tauri --exclude tauri-plugin-easy-usfm --all-targets -- -D warnings
 
 test:
-    cargo test --workspace --exclude easy-usfm-tauri
+    cargo test --workspace --exclude easy-usfm-tauri --exclude tauri-plugin-easy-usfm
 
 # The engine has to compile for the target it actually ships on
 wasm:

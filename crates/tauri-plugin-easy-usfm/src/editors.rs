@@ -220,6 +220,24 @@ fn install_menu<R: Runtime>(window: &Window<R>) -> tauri::Result<()> {
     Ok(())
 }
 
+/// Puts the menu up from another thread, once the caller has let go.
+///
+/// **Never on the main thread.** `Window::set_menu` called from the main
+/// thread waits on the main thread, and two places that want a menu run
+/// there: Tauri's `on_window_ready` hook (which also holds its plugin store),
+/// and every synchronous command, `set_recent_files` among them. Either way
+/// the window opened, drew its first frame, and then never answered another
+/// command — the file it was launched on was never opened. From a thread of
+/// its own the menu is handed to the main thread and put up as soon as that
+/// thread is free. (`AppHandle::set_menu`, which the single-window shell
+/// used, does not wait like this, which is why it never showed.)
+fn install_menu_soon<R: Runtime>(window: &Window<R>) {
+    let window = window.clone();
+    std::thread::spawn(move || {
+        let _ = install_menu(&window);
+    });
+}
+
 /// Called by the plugin as every window is created, editor or not.
 pub(crate) fn window_ready<R: Runtime>(window: Window<R>) {
     let app = window.app_handle().clone();
@@ -227,7 +245,7 @@ pub(crate) fn window_ready<R: Runtime>(window: Window<R>) {
     let editor = is_editor(&app, &label);
 
     if editor {
-        let _ = install_menu(&window);
+        install_menu_soon(&window);
         if !MAC {
             // Its own bar, so its own events: the item's id, to this window
             // and no other.
@@ -244,10 +262,15 @@ pub(crate) fn window_ready<R: Runtime>(window: Window<R>) {
             editors.with(|inner| inner.focused = editor.then(|| label.clone()));
             if MAC {
                 if editor {
-                    let _ = install_menu(&handle);
-                } else if let Ok(default) = tauri::menu::Menu::default(&app) {
+                    install_menu_soon(&handle);
+                } else {
                     // The host's own menu, back when the host is in front.
-                    let _ = app.set_menu(default);
+                    let app = app.clone();
+                    std::thread::spawn(move || {
+                        if let Ok(default) = tauri::menu::Menu::default(&app) {
+                            let _ = app.set_menu(default);
+                        }
+                    });
                 }
             }
         }
@@ -340,7 +363,8 @@ pub fn set_recent_files<R: Runtime>(
     if options.file_menu == FileMenu::Book {
         return Ok(());
     }
-    install_menu(&window).map_err(|error| error.to_string())
+    install_menu_soon(&window);
+    Ok(())
 }
 
 #[cfg(test)]

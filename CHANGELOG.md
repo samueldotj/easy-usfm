@@ -4,6 +4,13 @@ Notable changes, newest first. Versions follow [semantic versioning](https://sem
 
 ## Unreleased
 
+* **BibleCompose opens this editor in its own window.** The desktop shell
+  (opening, the save ladder, recovery, watching) is now a Tauri plugin,
+  `tauri-plugin-easy-usfm`, and easy-usfm's app is a small window around it.
+  BibleCompose registers the same plugin, so a book edited from there is
+  saved exactly as easy-usfm would save it. Nothing changes in easy-usfm's
+  own window.
+
 * **A Septuagint `α` verse is not a duplicate again.** `\v 18` followed by
   `\v 18α` is how the Septuagint marks material added to verse 18, and
   `VerseId::overlaps` has always said different segments never collide. The
