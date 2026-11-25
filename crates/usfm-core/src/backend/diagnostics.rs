@@ -85,6 +85,20 @@ pub(super) fn without_false_sidebar_pairs(
     diagnostics
 }
 
+/// Conditions the parser reports that are not faults in the document.
+///
+/// `CharCrossesVerseBoundary` — a `\v` inside an open character span, as in
+/// `\wj … \v 2 … \wj*`. USFM closes a character span at the next paragraph
+/// marker, not at a verse, and published Bibles carry words of Jesus across
+/// verses this way. `usfm3` reports it as an error; it is not even a warning.
+const NOT_FAULTS: &[DiagnosticCode] = &[DiagnosticCode::CharCrossesVerseBoundary];
+
+/// Drops every diagnostic in [`NOT_FAULTS`].
+pub(super) fn without_non_faults(mut diagnostics: Vec<Diagnostic>) -> Vec<Diagnostic> {
+    diagnostics.retain(|diagnostic| !NOT_FAULTS.contains(&diagnostic.code));
+    diagnostics
+}
+
 /// Whether a span runs from an `\esb` to a matching `\esbe`.
 fn is_closed_sidebar(text: &str) -> bool {
     // Longer than the closer on its own, so a span that *is* just an `\esbe`

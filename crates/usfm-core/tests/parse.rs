@@ -14,6 +14,20 @@ const GENESIS: &str = "\\id GEN Genesis
 ";
 
 #[test]
+fn words_of_jesus_may_run_across_verses() {
+    // `\wj` opened in one verse and closed in the next is how published
+    // Bibles mark a speech that spans verses. Nothing about it is a fault.
+    let source = "\\id MAT\n\\c 1\n\\p\n\\v 1 \\wj Blessed are the poor,\n\\v 2 blessed are they that mourn.\\wj*\n";
+    let document = Document::parse(source);
+
+    assert!(
+        document.diagnostics().is_empty(),
+        "{:?}",
+        document.diagnostics()
+    );
+}
+
+#[test]
 fn the_source_is_returned_exactly_as_given() {
     // ADR-003. Anything else here and byte fidelity is already lost before
     // the editor has been written.

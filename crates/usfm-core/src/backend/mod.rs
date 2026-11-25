@@ -111,6 +111,6 @@ impl Backend {
             None => upstream.iter().map(diagnostics::convert).collect(),
         };
 
-        diagnostics::without_false_sidebar_pairs(converted, source)
+        diagnostics::without_false_sidebar_pairs(diagnostics::without_non_faults(converted), source)
     }
 }
